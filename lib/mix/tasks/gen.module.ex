@@ -50,7 +50,9 @@ defmodule Mix.Tasks.Gen.Module do
       create_file(test_file, test_template(module_str))
     end
 
-    Mix.shell().info("\nCreated:\n  #{mod_file}" <> if(gen_test?, do: "\n  #{test_file}", else: ""))
+    Mix.shell().info(
+      "\nCreated:\n  #{mod_file}" <> if(gen_test?, do: "\n  #{test_file}", else: "")
+    )
   end
 
   defp module_template(module_str) do

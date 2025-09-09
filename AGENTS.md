@@ -33,7 +33,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 
 ## Endpoints (current)
 - GET `/health`: returns `{ "status": "ok" }`.
-- POST `/payments`: validates input and forwards JSON to the external payment gateway. Returns 200 with echo payload on success; returns 400 with validation errors when invalid.
+- POST `/payments`: validates input and enqueues the payload for asynchronous forwarding to the external payment gateway. Returns 202 with `{ status: "queued", correlationId, received_params }` when accepted; returns 400 with validation errors when invalid. May return 503 `{ error: "queue_full" }` if the in-memory queue is saturated (see PaymentQueue config).
 - GET `/payments-summary`: returns a stub summary payload (placeholder for future aggregation).
 
 ## External Gateways
@@ -42,6 +42,13 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Effective URL is `<base>/payments` (service appends `/payments`).
 - Config override: `Application.get_env(:tas_rinhaback_3ed, :payments_base_url, ...)` or pass `base_url:` option to `PaymentGateway.send_payment/2` in tests.
 - Fallback behavior: only on pool pressure timeouts (`:pool_timeout`). Other errors bubble up.
+
+## Async Queue (PaymentQueue)
+- Module: `lib/tas_rinhaback3ed/services/payment_queue.ex`
+- Purpose: decouple client request latency from payment forwarding. Bounded concurrency workers drain an in-memory `:queue` and send via `PaymentGateway`.
+- Concurrency: configurable via `:tas_rinhaback_3ed, :payment_queue, :max_concurrency` (default: `System.schedulers_online()*2`).
+- Back-pressure: optional `:max_queue_size` (default: `:infinity`). When full, controller returns `503 {"error":"queue_full"}`.
+- Supervision: started via `TasRinhaback3ed.Application` with a named `Task.Supervisor` (`TasRinhaback3ed.PaymentTaskSup`).
 
 ## Configuration
 - Port (prod): `PORT` env var. Default: `9999`.
@@ -54,6 +61,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Put controller modules under `TasRinhaback3ed.Controllers.*`.
 - Use `TasRinhaback3ed.JSON.send_json/3` for consistent responses.
 - Avoid starting the HTTP server inside code generators or tests.
+ - For async flows, enqueue work in `PaymentQueue` and keep controllers fast (respond 202 on acceptance).
 
 ## Tests
 - Run all: `mix test`

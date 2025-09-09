@@ -4,16 +4,17 @@ defmodule TasRinhaback3ed.Router do
   alias TasRinhaback3ed.{JSON, HealthController}
   alias TasRinhaback3ed.Controllers.PaymentController
 
-  plug Plug.RequestId
-  plug Plug.Logger
+  plug(Plug.RequestId)
+  plug(Plug.Logger)
 
-  plug Plug.Parsers,
+  plug(Plug.Parsers,
     parsers: [:json, :urlencoded, :multipart],
     pass: ["*/*"],
     json_decoder: Jason
+  )
 
-  plug :match
-  plug :dispatch
+  plug(:match)
+  plug(:dispatch)
 
   get "/health" do
     HealthController.index(conn)

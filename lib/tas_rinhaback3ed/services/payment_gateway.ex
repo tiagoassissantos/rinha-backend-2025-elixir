@@ -15,7 +15,7 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
   def send_payment(params, opts \\ []) when is_map(params) do
     url = mount_base_url(@default_base_url, opts)
 
-    IO.puts("Sending payment to #{url} with params #{inspect(params)}")
+    #IO.puts("Sending payment to #{url} with params #{inspect(params)}")
 
     with :ok <- make_request(url, params) do
       :ok
@@ -35,15 +35,15 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
   defp make_request(url, params) do
     try do
       headers = [{"Content-Type", "application/json"}]
-      #req =
-        #Req.new()
-        #|> Req.Request.register_options([:trace])
-        #|> Req.Request.prepend_request_steps(print_headers: &print_request_headers/1)
+      # req =
+      # Req.new()
+      # |> Req.Request.register_options([:trace])
+      # |> Req.Request.prepend_request_steps(print_headers: &print_request_headers/1)
 
-      #case Req.post(req, url: url, json: params, headers: headers) do
+      # case Req.post(req, url: url, json: params, headers: headers) do
       case Req.post(url, json: params, headers: headers) do
         {:ok, resp} ->
-          IO.inspect(resp, label: "Payment gateway response")
+          #IO.inspect(resp, label: "Payment gateway response")
           :ok
 
         # Finch reports queue pressure timeouts like this:
@@ -68,7 +68,11 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
       # Convert unexpected raises (like NimblePool.exit!/3 -> RuntimeError) to {:error, ...}
       e in RuntimeError ->
         IO.inspect(e, label: "Payment gateway unexpected error")
-        if String.contains?(Exception.message(e), "unable to provide a connection within the timeout") do
+
+        if String.contains?(
+             Exception.message(e),
+             "unable to provide a connection within the timeout"
+           ) do
           {:error, :pool_timeout}
         else
           {:error, e}

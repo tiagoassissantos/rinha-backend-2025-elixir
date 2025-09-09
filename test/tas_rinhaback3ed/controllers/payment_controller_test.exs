@@ -8,22 +8,29 @@ defmodule TasRinhaback3ed.Controllers.PaymentControllerTest do
   @opts Router.init([])
 
   describe "POST /payments" do
-    test "forwards JSON to external gateway and returns 200" do
+    test "enqueues and returns 202; worker forwards JSON" do
       bypass = Bypass.open()
       base_url = "http://localhost:#{bypass.port}"
 
       original_base = Application.get_env(:tas_rinhaback_3ed, :payments_base_url)
       Application.put_env(:tas_rinhaback_3ed, :payments_base_url, base_url)
+
       on_exit(fn ->
-        if original_base, do: Application.put_env(:tas_rinhaback_3ed, :payments_base_url, original_base), else: Application.delete_env(:tas_rinhaback_3ed, :payments_base_url)
+        if original_base,
+          do: Application.put_env(:tas_rinhaback_3ed, :payments_base_url, original_base),
+          else: Application.delete_env(:tas_rinhaback_3ed, :payments_base_url)
       end)
 
       payload = %{"correlationId" => "4a7901b8-7d26-4d9d-aa19-4dc1c7cf60b3", "amount" => 19.90}
 
+      test_pid = self()
+
       Bypass.expect(bypass, "POST", "/payments", fn conn ->
         {:ok, body, conn} = read_body(conn)
         assert get_req_header(conn, "content-type") |> Enum.at(0) =~ "application/json"
-        assert Jason.decode!(body) == payload
+        decoded = Jason.decode!(body)
+        assert decoded == payload
+        send(test_pid, {:processor_called, decoded})
         resp(conn, 202, ~s({"ok":true}))
       end)
 
@@ -34,12 +41,13 @@ defmodule TasRinhaback3ed.Controllers.PaymentControllerTest do
 
       conn = Router.call(conn, @opts)
 
-      assert conn.status == 200
+      assert conn.status == 202
       assert get_resp_header(conn, "content-type") == ["application/json; charset=utf-8"]
 
       body = Jason.decode!(conn.resp_body)
-      assert body["status"] == "payment_received"
+      assert body["status"] == "queued"
       assert body["received_params"] == payload
+      assert_receive {:processor_called, ^payload}, 1_000
     end
 
     test "returns 400 for missing/invalid fields" do

@@ -96,8 +96,13 @@ Production (optional)
   _build/prod/rel/tas_rinhaback_3ed/bin/tas_rinhaback_3ed log
   _build/prod/rel/tas_rinhaback_3ed/bin/tas_rinhaback_3ed remote
 
+Endpoints
+- GET `/health`: `{ "status": "ok" }`.
+- POST `/payments`: validates input and enqueues asynchronously; responds `202` with `{ status: "queued", correlationId, received_params }`. May return `400` on validation errors or `503` when the in-memory queue is full.
+- GET `/payments-summary`: stub summary payload.
+
 Notes
-- The project is intentionally minimal (Plug + Bandit only). Add modules under `lib/tas_rinhaback3ed_web/` for controllers/plugs as you expand the API.
+- The project is intentionally minimal (Plug + Bandit only). Modules live under `lib/tas_rinhaback3ed/`.
 - For structured JSON parsing, `Plug.Parsers` is configured to use Jason.
 - Consider adding environments (dev/test/prod) specific configuration as needs grow.
 

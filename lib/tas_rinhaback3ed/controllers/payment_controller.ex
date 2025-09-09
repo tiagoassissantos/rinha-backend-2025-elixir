@@ -4,36 +4,43 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
   """
 
   alias TasRinhaback3ed.JSON
-  alias TasRinhaback3ed.Services.PaymentGateway
+  alias TasRinhaback3ed.Services.PaymentQueue
   alias Decimal, as: D
 
   def payments(conn, params) do
     case validate_params(params) do
       {:ok, _normalized} ->
-        _ = PaymentGateway.send_payment(params)
-        response = %{
-          status: "payment_received",
-          received_params: params
-        }
+        case PaymentQueue.enqueue(params) do
+          {:ok, :queued} ->
+            response = %{
+              status: "queued",
+              correlationId: Map.get(params, "correlationId"),
+              received_params: params
+            }
 
-        JSON.send_json(conn, 200, response)
+            JSON.send_json(conn, 202, response)
+
+          {:error, :queue_full} ->
+            JSON.send_json(conn, 503, %{error: "queue_full"})
+        end
 
       {:error, errors} ->
         JSON.send_json(conn, 400, %{error: "invalid_request", errors: errors})
     end
   end
 
-  def payments_summary(conn, params) do
+  def payments_summary(conn, _params) do
     response = %{
       default: %{
         totalRequests: 43236,
-        totalAmount: 4142345.92
+        totalAmount: 4_142_345.92
       },
       fallback: %{
-        totalRequests: 423545,
-        totalAmount: 329347.34
+        totalRequests: 423_545,
+        totalAmount: 329_347.34
       }
     }
+
     JSON.send_json(conn, 200, response)
   end
 
@@ -49,13 +56,18 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
             {[%{field: "correlationId", message: "must be a valid UUID"} | errors], nil}
           end
 
-        nil -> {[%{field: "correlationId", message: "is required"} | errors], nil}
-        _ -> {[%{field: "correlationId", message: "must be a valid UUID"} | errors], nil}
+        nil ->
+          {[%{field: "correlationId", message: "is required"} | errors], nil}
+
+        _ ->
+          {[%{field: "correlationId", message: "must be a valid UUID"} | errors], nil}
       end
 
     {errors, _amount} =
       case Map.get(params, "amount") do
-        nil -> {[%{field: "amount", message: "is required"} | errors], nil}
+        nil ->
+          {[%{field: "amount", message: "is required"} | errors], nil}
+
         value ->
           case to_decimal(value) do
             {:ok, dec} -> {errors, dec}
@@ -71,7 +83,10 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
 
   defp uuid?(value) when is_binary(value) do
     # Accept canonical UUIDs; enforce version/variant for sanity
-    Regex.match?(~r/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/u, value)
+    Regex.match?(
+      ~r/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/u,
+      value
+    )
   end
 
   defp to_decimal(value) when is_integer(value), do: {:ok, D.new(value)}

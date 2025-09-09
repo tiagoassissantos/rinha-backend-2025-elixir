@@ -7,7 +7,12 @@ defmodule TasRinhaback3ed.Application do
 
   @impl true
   def start(_type, _args) do
-    children =
+    queue_children = [
+      {Task.Supervisor, name: TasRinhaback3ed.PaymentTaskSup},
+      TasRinhaback3ed.Services.PaymentQueue
+    ]
+
+    http_children =
       if Mix.env() == :test do
         []
       else
@@ -20,12 +25,12 @@ defmodule TasRinhaback3ed.Application do
         [
           {
             Bandit,
-            plug: TasRinhaback3ed.Router,
-            scheme: :http,
-            port: port
+            plug: TasRinhaback3ed.Router, scheme: :http, port: port
           }
         ]
       end
+
+    children = queue_children ++ http_children
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
