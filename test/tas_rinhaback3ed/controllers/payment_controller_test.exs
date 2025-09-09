@@ -66,4 +66,37 @@ defmodule TasRinhaback3ed.Controllers.PaymentControllerTest do
       assert is_list(body["errors"]) and length(body["errors"]) >= 1
     end
   end
+
+  describe "GET /payments-summary" do
+    test "returns the expected summary JSON with from/to params" do
+      qs = "from=2020-07-10T12:34:56.000Z&to=2020-07-10T12:35:56.000Z"
+      conn =
+        :get
+        |> conn("/payments-summary?" <> qs)
+
+      conn = Router.call(conn, @opts)
+
+      assert conn.status == 200
+      assert get_resp_header(conn, "content-type") == ["application/json; charset=utf-8"]
+
+      body = Jason.decode!(conn.resp_body)
+      assert body["default"]["totalRequests"] == 43_236
+      assert_in_delta body["default"]["totalAmount"], 4_142_345.92, 0.0001
+      assert body["fallback"]["totalRequests"] == 423_545
+      assert_in_delta body["fallback"]["totalAmount"], 329_347.34, 0.0001
+    end
+
+    test "returns 400 when from/to are missing" do
+      conn =
+        :get
+        |> conn("/payments-summary")
+
+      conn = Router.call(conn, @opts)
+      assert conn.status == 400
+
+      body = Jason.decode!(conn.resp_body)
+      assert body["error"] == "invalid_request"
+      assert is_list(body["errors"]) and length(body["errors"]) >= 1
+    end
+  end
 end

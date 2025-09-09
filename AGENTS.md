@@ -34,7 +34,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 ## Endpoints (current)
 - GET `/health`: returns `{ "status": "ok" }`.
 - POST `/payments`: validates input and enqueues the payload for asynchronous forwarding to the external payment gateway. Returns 202 with `{ status: "queued", correlationId, received_params }` when accepted; returns 400 with validation errors when invalid. May return 503 `{ error: "queue_full" }` if the in-memory queue is saturated (see PaymentQueue config).
-- GET `/payments-summary`: returns a stub summary payload (placeholder for future aggregation).
+ - GET `/payments-summary`: requires `from` and `to` ISO8601 query params and returns a stub summary payload (placeholder for future aggregation). Responds 400 with `{ error: "invalid_request", errors: [...] }` if params are missing/invalid.
 
 ## External Gateways
 - Primary base URL: `http://localhost:8001`
@@ -190,6 +190,7 @@ This section is for automation agents (e.g., Codex CLI) contributing to this rep
 - For HTTP client code, use `Bypass` to assert payloads and simulate statuses/timeouts.
 - For controller testing, build conns with `Plug.Test.conn/3` and call the router.
 - Validate JSON `content-type` header and response body shape.
+ - For `/payments-summary`, include `from`/`to` in the query string; assert 400 when missing.
 
 ## Troubleshooting
 - 404 responses: check `match _` in `router.ex` and route precedence.

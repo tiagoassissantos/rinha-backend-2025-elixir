@@ -29,19 +29,39 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
     end
   end
 
-  def payments_summary(conn, _params) do
-    response = %{
-      default: %{
-        totalRequests: 43236,
-        totalAmount: 4_142_345.92
-      },
-      fallback: %{
-        totalRequests: 423_545,
-        totalAmount: 329_347.34
+  def payments_summary(conn, params) when is_map(params) do
+    with {:ok, _from} <- require_iso8601(params, "from"),
+         {:ok, _to} <- require_iso8601(params, "to") do
+      response = %{
+        default: %{
+          totalRequests: 43_236,
+          totalAmount: 4_142_345.92
+        },
+        fallback: %{
+          totalRequests: 423_545,
+          totalAmount: 329_347.34
+        }
       }
-    }
 
-    JSON.send_json(conn, 200, response)
+      JSON.send_json(conn, 200, response)
+    else
+      {:error, errors} ->
+        JSON.send_json(conn, 400, %{error: "invalid_request", errors: errors})
+    end
+  end
+
+  defp require_iso8601(params, key) do
+    case Map.get(params, key) do
+      nil -> {:error, [%{field: key, message: "is required"}]}
+      value when is_binary(value) ->
+        case DateTime.from_iso8601(value) do
+          {:ok, dt, _offset} -> {:ok, dt}
+          _ -> {:error, [%{field: key, message: "must be ISO8601 datetime"}]}
+        end
+
+      _ ->
+        {:error, [%{field: key, message: "must be ISO8601 datetime"}]}
+    end
   end
 
   defp validate_params(params) when is_map(params) do

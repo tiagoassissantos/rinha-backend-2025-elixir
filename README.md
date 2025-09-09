@@ -99,7 +99,7 @@ Production (optional)
 Endpoints
 - GET `/health`: `{ "status": "ok" }`.
 - POST `/payments`: validates input and enqueues asynchronously; responds `202` with `{ status: "queued", correlationId, received_params }`. May return `400` on validation errors or `503` when the in-memory queue is full.
-- GET `/payments-summary`: stub summary payload.
+- GET `/payments-summary?from=<ISO8601>&to=<ISO8601>`: requires `from` and `to` query params (ISO8601 datetime). Returns a stub summary payload. Returns `400` with `{ error: "invalid_request", errors: [...] }` if missing/invalid.
 
 Notes
 - The project is intentionally minimal (Plug + Bandit only). Modules live under `lib/tas_rinhaback3ed/`.
