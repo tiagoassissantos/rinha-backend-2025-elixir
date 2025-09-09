@@ -12,6 +12,13 @@ defmodule TasRinhaback3ed.Application do
       TasRinhaback3ed.Services.PaymentQueue
     ]
 
+    repo_children =
+      if Mix.env() == :test do
+        []
+      else
+        [TasRinhaback3ed.Repo]
+      end
+
     http_children =
       if Mix.env() == :test do
         []
@@ -30,7 +37,7 @@ defmodule TasRinhaback3ed.Application do
         ]
       end
 
-    children = queue_children ++ http_children
+    children = repo_children ++ queue_children ++ http_children
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

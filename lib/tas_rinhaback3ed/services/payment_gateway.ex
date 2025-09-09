@@ -15,16 +15,14 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
   def send_payment(params, opts \\ []) when is_map(params) do
     url = mount_base_url(@default_base_url, opts)
 
-    #IO.puts("Sending payment to #{url} with params #{inspect(params)}")
-
-    with :ok <- make_request(url, params) do
+    with :ok <- make_request(url, params, "default") do
       :ok
     else
       # only fallback on pool timeout / connection queue pressure
       {:error, :pool_timeout} ->
         IO.puts("Primary gateway timed out (pool pressure). Trying fallback...")
         fallback_url = mount_base_url(@fallback_base_url, opts)
-        make_request(fallback_url, params)
+        make_request(fallback_url, params, "fallback")
 
       # anything else: bubble up
       {:error, reason} ->
@@ -32,7 +30,7 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
     end
   end
 
-  defp make_request(url, params) do
+  defp make_request(url, params, route) do
     try do
       headers = [{"Content-Type", "application/json"}]
       # req =
@@ -43,12 +41,13 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
       # case Req.post(req, url: url, json: params, headers: headers) do
       case Req.post(url, json: params, headers: headers) do
         {:ok, resp} ->
-          #IO.inspect(resp, label: "Payment gateway response")
+          # Persist successful transaction (best-effort)
+          TasRinhaback3ed.Services.Transactions.store_success(params, route)
           :ok
 
         # Finch reports queue pressure timeouts like this:
         {:error, %Finch.Error{reason: :pool_timeout} = e} ->
-          Logger.warn("Payment gateway pool timeout at #{url}: #{inspect(e)}")
+          Logger.warning("Payment gateway pool timeout at #{url}: #{inspect(e)}")
           {:error, :pool_timeout}
 
         # Other transport errors:

@@ -11,6 +11,11 @@ services:
       - PORT=4001
       - MIX_HOME=/root/.mix
       - HEX_OFFLINE=1
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=tasrinha_dev
     command: >-
       sh -lc "mix run --no-halt"
     expose:
@@ -20,6 +25,8 @@ services:
     networks:
       - appnet
       - payment-processor
+    depends_on:
+      - postgres
     deploy:
       resources:
         limits:
@@ -38,6 +45,11 @@ services:
       - PORT=4002
       - MIX_HOME=/root/.mix
       - HEX_OFFLINE=1
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=tasrinha_dev
     command: >-
       sh -lc "mix run --no-halt"
     expose:
@@ -47,6 +59,8 @@ services:
     networks:
       - appnet
       - payment-processor
+    depends_on:
+      - postgres
     deploy:
       resources:
         limits:
@@ -72,8 +86,31 @@ services:
           cpus: "0.4"
           memory: "27MB"
 
+  postgres:
+    image: postgres:17-alpine
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=tasrinha_dev
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - appnet
+
 networks:
   payment-processor:
     external: true
   appnet:
     driver: bridge
+
+volumes:
+  pgdata:
+    driver: local

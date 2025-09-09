@@ -5,6 +5,7 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
 
   alias TasRinhaback3ed.JSON
   alias TasRinhaback3ed.Services.PaymentQueue
+  alias TasRinhaback3ed.Services.Transactions
   alias Decimal, as: D
 
   def payments(conn, params) do
@@ -30,25 +31,43 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
   end
 
   def payments_summary(conn, params) when is_map(params) do
-    with {:ok, _from} <- require_iso8601(params, "from"),
-         {:ok, _to} <- require_iso8601(params, "to") do
-      response = %{
-        default: %{
-          totalRequests: 43_236,
-          totalAmount: 4_142_345.92
-        },
-        fallback: %{
-          totalRequests: 423_545,
-          totalAmount: 329_347.34
-        }
-      }
+    with {:ok, from_dt} <- require_iso8601(params, "from"),
+         {:ok, to_dt} <- require_iso8601(params, "to") do
+      case Transactions.summary(from_dt, to_dt) do
+        {:ok, result} ->
+          JSON.send_json(conn, 200, result |> normalize_amounts())
 
-      JSON.send_json(conn, 200, response)
+        {:error, :unavailable} ->
+          # Fallback to static stub if DB isn't available (e.g., test env)
+          response = %{
+            default: %{
+              totalRequests: 43_236,
+              totalAmount: 4_142_345.92
+            },
+            fallback: %{
+              totalRequests: 423_545,
+              totalAmount: 329_347.34
+            }
+          }
+
+          JSON.send_json(conn, 200, response)
+      end
     else
       {:error, errors} ->
         JSON.send_json(conn, 400, %{error: "invalid_request", errors: errors})
     end
   end
+
+  # Ensure numbers are JSON-friendly floats
+  defp normalize_amounts(%{default: d, fallback: f}) do
+    %{
+      default: %{totalRequests: d.totalRequests, totalAmount: to_float(d.totalAmount)},
+      fallback: %{totalRequests: f.totalRequests, totalAmount: to_float(f.totalAmount)}
+    }
+  end
+
+  defp to_float(%Decimal{} = d), do: Decimal.to_float(d)
+  defp to_float(v) when is_number(v), do: v
 
   defp require_iso8601(params, key) do
     case Map.get(params, key) do

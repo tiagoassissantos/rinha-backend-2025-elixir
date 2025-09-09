@@ -27,6 +27,8 @@ defmodule TasRinhaback3ed.MixProject do
       {:jason, "~> 1.4"},
       {:decimal, "~> 2.1"},
       {:req, "~> 0.5.0"},
+      {:ecto_sql, "~> 3.11"},
+      {:postgrex, ">= 0.0.0"},
       {:bypass, "~> 2.1", only: :test}
     ]
   end

@@ -27,6 +27,8 @@ Dependencies
 - Plug: request routing, parsers, etc.
 - Bandit: HTTP server.
 - Jason: JSON encoding/decoding.
+- Ecto SQL + Postgrex: Database access (PostgreSQL).
+ - Ecto SQL + Postgrex: Database access (PostgreSQL).
 
 Run locally
 1) Install dependencies (requires network):
@@ -65,6 +67,7 @@ Docker & Compose
   docker compose up
   Visit http://localhost:9999/health
   Nginx proxies to app1:4001 and app2:4002
+  PostgreSQL service available on localhost:5432 (container name `postgres`).
 
 - After code changes:
   docker compose restart app1 app2
@@ -99,12 +102,19 @@ Production (optional)
 Endpoints
 - GET `/health`: `{ "status": "ok" }`.
 - POST `/payments`: validates input and enqueues asynchronously; responds `202` with `{ status: "queued", correlationId, received_params }`. May return `400` on validation errors or `503` when the in-memory queue is full.
-- GET `/payments-summary?from=<ISO8601>&to=<ISO8601>`: requires `from` and `to` query params (ISO8601 datetime). Returns a stub summary payload. Returns `400` with `{ error: "invalid_request", errors: [...] }` if missing/invalid.
+- GET `/payments-summary?from=<ISO8601>&to=<ISO8601>`: requires `from` and `to` query params (ISO8601 datetime). Returns an aggregated summary from the DB when available; otherwise falls back to a stub payload. Returns `400` with `{ error: "invalid_request", errors: [...] }` if missing/invalid.
 
 Notes
 - The project is intentionally minimal (Plug + Bandit only). Modules live under `lib/tas_rinhaback3ed/`.
 - For structured JSON parsing, `Plug.Parsers` is configured to use Jason.
 - Consider adding environments (dev/test/prod) specific configuration as needs grow.
+ 
+Database (Ecto)
+- Repo: `TasRinhaback3ed.Repo` (PostgreSQL)
+- Configure via `DATABASE_URL` or `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` (plus optional `DB_POOL_SIZE`, `DB_SSL`).
+- Create DB and run migrations:
+  mix ecto.create
+  mix ecto.migrate
 
 Generators (Rails-like)
 - Added a custom Mix task `mix gen.module` to generate a module and its test file.

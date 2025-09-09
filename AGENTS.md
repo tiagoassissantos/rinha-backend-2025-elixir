@@ -18,11 +18,13 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
   - Payments: `lib/tas_rinhaback3ed/controllers/payment_controller.ex`
 - Services:
   - Payment gateway: `lib/tas_rinhaback3ed/services/payment_gateway.ex`
+  - Transactions (DB): `lib/tas_rinhaback3ed/services/transactions.ex`
 - JSON helpers: `lib/tas_rinhaback3ed/json.ex`
 - Mix task (generator): `lib/mix/tasks/gen.module.ex`
 - Config: `config/config.exs`, `config/runtime.exs`
 - Docker: `Dockerfile`, `docker-compose.yaml`, `infra/nginx.conf`
 - Tests: `test/**`
+ - Repo (Ecto): `lib/tas_rinhaback3ed/repo.ex`, migrations in `priv/repo/migrations/`
 
 ## Run Locally
 - Install deps: `mix deps.get`
@@ -34,7 +36,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 ## Endpoints (current)
 - GET `/health`: returns `{ "status": "ok" }`.
 - POST `/payments`: validates input and enqueues the payload for asynchronous forwarding to the external payment gateway. Returns 202 with `{ status: "queued", correlationId, received_params }` when accepted; returns 400 with validation errors when invalid. May return 503 `{ error: "queue_full" }` if the in-memory queue is saturated (see PaymentQueue config).
- - GET `/payments-summary`: requires `from` and `to` ISO8601 query params and returns a stub summary payload (placeholder for future aggregation). Responds 400 with `{ error: "invalid_request", errors: [...] }` if params are missing/invalid.
+ - GET `/payments-summary`: requires `from` and `to` ISO8601 query params and returns an aggregated summary from the DB when available; otherwise falls back to a stub payload. Responds 400 with `{ error: "invalid_request", errors: [...] }` if params are missing/invalid.
 
 ## External Gateways
 - Primary base URL: `http://localhost:8001`
@@ -54,6 +56,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Port (prod): `PORT` env var. Default: `9999`.
 - Gateway base URL: `:tas_rinhaback_3ed, :payments_base_url`.
 - Logger: console with request_id metadata.
+- Database (Ecto/PostgreSQL): configure via `DATABASE_URL` or `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`. Optional: `DB_POOL_SIZE`, `DB_SSL`.
 
 ## Development Workflow
 - Add routes in `lib/tas_rinhaback3ed/router.ex`.
@@ -81,6 +84,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
   - Visit `http://localhost:9999/health`
   - Backends listen on `app1:4001` and `app2:4002` (nginx upstream)
   - Compose mounts host `${HOME}/.mix -> /root/.mix` so Hex is available offline
+  - PostgreSQL available as `postgres:5432` (host mapped to `5432`), user `postgres`, password `postgres`, database `tasrinha_dev`.
 
 ### Dev Workflow (making code changes)
 - Restart apps to pick up changes:
@@ -173,6 +177,8 @@ This section is for automation agents (e.g., Codex CLI) contributing to this rep
 - Tests: `mix test`
 - Run app: `mix run --no-halt`
 - Generate module: `mix gen.module TasRinhaback3ed.Domain.Example`
+ - Create DB: `mix ecto.create`
+ - Migrate DB: `mix ecto.migrate`
 
 ## Definition of Done
 - Compiles with no warnings relevant to the change.
