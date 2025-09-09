@@ -1,0 +1,89 @@
+defmodule TasRinhaback3ed.Controllers.PaymentController do
+  @moduledoc """
+  Documentation for TasRinhaback3ed.Controllers.PaymentController.
+  """
+
+  alias TasRinhaback3ed.JSON
+  alias TasRinhaback3ed.Services.PaymentGateway
+  alias Decimal, as: D
+
+  def payments(conn, params) do
+    case validate_params(params) do
+      {:ok, _normalized} ->
+        _ = PaymentGateway.send_payment(params)
+        response = %{
+          status: "payment_received",
+          received_params: params
+        }
+
+        JSON.send_json(conn, 200, response)
+
+      {:error, errors} ->
+        JSON.send_json(conn, 400, %{error: "invalid_request", errors: errors})
+    end
+  end
+
+  def payments_summary(conn, params) do
+    response = %{
+      default: %{
+        totalRequests: 43236,
+        totalAmount: 4142345.92
+      },
+      fallback: %{
+        totalRequests: 423545,
+        totalAmount: 329347.34
+      }
+    }
+    JSON.send_json(conn, 200, response)
+  end
+
+  defp validate_params(params) when is_map(params) do
+    errors = []
+
+    {errors, _correlation_id} =
+      case Map.get(params, "correlationId") do
+        cid when is_binary(cid) ->
+          if uuid?(cid) do
+            {errors, cid}
+          else
+            {[%{field: "correlationId", message: "must be a valid UUID"} | errors], nil}
+          end
+
+        nil -> {[%{field: "correlationId", message: "is required"} | errors], nil}
+        _ -> {[%{field: "correlationId", message: "must be a valid UUID"} | errors], nil}
+      end
+
+    {errors, _amount} =
+      case Map.get(params, "amount") do
+        nil -> {[%{field: "amount", message: "is required"} | errors], nil}
+        value ->
+          case to_decimal(value) do
+            {:ok, dec} -> {errors, dec}
+            {:error, _} -> {[%{field: "amount", message: "must be a Decimal"} | errors], nil}
+          end
+      end
+
+    case errors do
+      [] -> {:ok, :valid}
+      errs -> {:error, Enum.reverse(errs)}
+    end
+  end
+
+  defp uuid?(value) when is_binary(value) do
+    # Accept canonical UUIDs; enforce version/variant for sanity
+    Regex.match?(~r/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/u, value)
+  end
+
+  defp to_decimal(value) when is_integer(value), do: {:ok, D.new(value)}
+  defp to_decimal(value) when is_float(value), do: {:ok, D.from_float(value)}
+
+  defp to_decimal(value) when is_binary(value) do
+    case D.parse(value) do
+      {dec, ""} -> {:ok, dec}
+      {_dec, _rest} -> {:error, :invalid}
+      :error -> {:error, :invalid}
+    end
+  end
+
+  defp to_decimal(_), do: {:error, :invalid}
+end

@@ -1,0 +1,61 @@
+services:
+  app1:
+    image: elixir:1.18-alpine
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - ${HOME}/.mix:/root/.mix:ro
+    container_name: app1
+    environment:
+      - MIX_ENV=dev
+      - PORT=4001
+      - MIX_HOME=/root/.mix
+      - HEX_OFFLINE=1
+    command: >-
+      sh -lc "mix run --no-halt"
+    expose:
+      - "4001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - appnet
+
+  app2:
+    image: elixir:1.18-alpine
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - ${HOME}/.mix:/root/.mix:ro
+    container_name: app2
+    environment:
+      - MIX_ENV=dev
+      - PORT=4002
+      - MIX_HOME=/root/.mix
+      - HEX_OFFLINE=1
+    command: >-
+      sh -lc "mix run --no-halt"
+    expose:
+      - "4002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - appnet
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    depends_on:
+      - app1
+      - app2
+    ports:
+      - "9999:80"
+    volumes:
+      - ./infra/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - appnet
+
+networks:
+  payment-processor:
+    external: true
+  appnet:
+    driver: bridge
