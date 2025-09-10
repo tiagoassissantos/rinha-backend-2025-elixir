@@ -13,16 +13,19 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
 
   @spec send_payment(map(), keyword()) :: :ok | {:error, term()}
   def send_payment(params, opts \\ []) when is_map(params) do
+    uid = Integer.to_string(:erlang.unique_integer([:positive]))
+    Logger.info("[#{uid}] - Sending payment request to gateway...")
     url = mount_base_url(@default_base_url, opts)
 
-    with :ok <- make_request(url, params, "default") do
+    with :ok <- make_request(url, params, "default", uid) do
+      Logger.info("[#{uid}] - Payment request succeeded.")
       :ok
     else
       # only fallback on pool timeout / connection queue pressure
       {:error, :pool_timeout} ->
-        IO.puts("Primary gateway timed out (pool pressure). Trying fallback...")
+        Logger.error("[#{uid}] - Primary gateway timed out (pool pressure). Trying fallback...")
         fallback_url = mount_base_url(@fallback_base_url, opts)
-        make_request(fallback_url, params, "fallback")
+        make_request(fallback_url, params, "fallback", uid)
 
       # anything else: bubble up
       {:error, reason} ->
@@ -30,56 +33,72 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
     end
   end
 
-  defp make_request(url, params, route) do
+  defp make_request(url, params, route, uid) do
     try do
       headers = [{"Content-Type", "application/json"}]
-      # req =
-      # Req.new()
-      # |> Req.Request.register_options([:trace])
-      # |> Req.Request.prepend_request_steps(print_headers: &print_request_headers/1)
+      # Optional debug timeouts to help reproduce failures locally
+      base_opts = [json: params, headers: headers]
+      opts =
+        if Application.get_env(:tas_rinhaback_3ed, :payments_debug, false) do
+          Keyword.merge(base_opts, receive_timeout: 2_000, connect_options: [timeout: 1_000])
+        else
+          base_opts
+        end
 
-      # case Req.post(req, url: url, json: params, headers: headers) do
-      case Req.post(url, json: params, headers: headers) do
-        {:ok, resp} ->
-          # Persist successful transaction (best-effort)
+      case Req.post(url, opts) do
+        {:ok, _resp} ->
+          Logger.info("[#{uid}] - Payment gateway request successful.")
           TasRinhaback3ed.Services.Transactions.store_success(params, route)
           :ok
 
         # Finch reports queue pressure timeouts like this:
         {:error, %Finch.Error{reason: :pool_timeout} = e} ->
-          Logger.warning("Payment gateway pool timeout at #{url}: #{inspect(e)}")
+          Logger.error("[#{uid}] - Payment gateway pool timeout at #{url}: #{inspect(e)}")
           {:error, :pool_timeout}
 
-        # Other transport errors:
-        {:error, %Mint.TransportError{} = e} ->
-          IO.inspect(e, label: "Payment gateway transport error")
-          {:error, e}
-
-        {:error, %Mint.TransportError{reason: reason} = e} ->
-          Logger.error("Transport error at #{url}: #{inspect(reason)} | full: #{inspect(e)}")
+        # Other Finch errors (not eligible for fallback)
+        {:error, %Finch.Error{reason: reason} = e} ->
+          Logger.error("[#{uid}] - Finch.Error (#{inspect(reason)}): #{inspect(e)}")
           {:error, reason}
 
-        {:error, e} ->
-          Logger.error("Unknown error: #{inspect(e)} | message: #{Exception.message(e)}")
+        # Mint transport layer
+        {:error, %Mint.TransportError{reason: reason} = e} ->
+          Logger.error("[#{uid}] - Mint.TransportError (#{inspect(reason)}): #{inspect(e)}")
+          {:error, reason}
+
+        # Any other exception struct
+        {:error, %_{} = e} ->
+          Logger.error("[#{uid}] - Exception struct: #{inspect(e)} | message: #{Exception.message(e)}")
           {:error, e}
+
+        # Unknown error term
+        {:error, other} ->
+          Logger.error("[#{uid}] - Unknown error term: #{inspect(other)}")
+          {:error, other}
       end
     rescue
-      # Convert unexpected raises (like NimblePool.exit!/3 -> RuntimeError) to {:error, ...}
-      e in RuntimeError ->
-        IO.inspect(e, label: "Payment gateway unexpected error")
-
-        if String.contains?(
-             Exception.message(e),
-             "unable to provide a connection within the timeout"
-           ) do
+      # Convert unexpected raises (like NimblePool.exit!/3) to {:error, ...}
+      e ->
+        Logger.error("[#{uid}] - Unexpected exception: " <> Exception.format(:error, e, __STACKTRACE__))
+        if Exception.message(e) |> to_string() |> String.contains?("unable to provide a connection within the timeout") do
           {:error, :pool_timeout}
         else
           {:error, e}
         end
+    catch
+      :exit, reason ->
+        # Some layers may exit instead of raising; log and map if it's pool pressure
+        Logger.error("[#{uid}] - EXIT during request: #{inspect(reason)}")
+        msg = to_string(reason)
+        if String.contains?(msg, "unable to provide a connection within the timeout") do
+          {:error, :pool_timeout}
+        else
+          {:error, reason}
+        end
     end
   end
 
-  defp mount_base_url(base_url, opts \\ []) do
+  defp mount_base_url(base_url, opts) do
     Keyword.get(
       opts,
       :base_url,
@@ -87,17 +106,17 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
     ) <> "/payments"
   end
 
-  defp print_request_headers(request) do
-    if request.options[:print_headers] do
-      print_headers("> ", request.headers)
-    end
+  #defp print_request_headers(request) do
+  #  if request.options[:print_headers] do
+  #    print_headers("> ", request.headers)
+  #  end
 
-    request
-  end
+  #  request
+  #end
 
-  defp print_headers(prefix, headers) do
-    for {name, value} <- headers do
-      Logger.info([prefix, name, ": ", value])
-    end
-  end
+  #defp print_headers(prefix, headers) do
+  #  for {name, value} <- headers do
+  #    Logger.info([prefix, name, ": ", value])
+  #  end
+  #end
 end
