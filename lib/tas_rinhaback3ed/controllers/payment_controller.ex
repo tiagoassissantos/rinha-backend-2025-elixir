@@ -13,6 +13,8 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
       {:ok, _normalized} ->
         case PaymentQueue.enqueue(params) do
           {:ok, :queued} ->
+            # TasRinhaback3ed.Services.Transactions.store_success(params, "default")
+
             response = %{
               status: "queued",
               correlationId: Map.get(params, "correlationId"),

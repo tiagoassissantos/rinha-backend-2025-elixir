@@ -26,6 +26,7 @@ defmodule TasRinhaback3ed.Services.Transactions do
       attrs = %{
         correlation_id: Map.get(params, "correlationId"),
         amount: cast_decimal(Map.get(params, "amount")),
+        inserted_at: Map.get(params, "requestedAt"),
         route: route
       }
 
@@ -94,6 +95,49 @@ defmodule TasRinhaback3ed.Services.Transactions do
     end
   end
 
+  @doc """
+  Update an existing transaction by `correlation_id`.
+
+  Accepts a map with optional keys `"amount"`/`:amount` and `"route"`/`:route`.
+  Returns `{:ok, %Transaction{}}` on success, `{:error, :not_found}` when the
+  transaction doesn't exist, or `{:error, term}` for validation/unavailability errors.
+  """
+  @spec update_transaction(String.t(), map()) ::
+          {:ok, Transaction.t()} | {:error, :not_found} | {:error, term()}
+  def update_transaction(correlation_id, attrs) when is_binary(correlation_id) and is_map(attrs) do
+    if repo_available?() do
+      case Repo.get_by(Transaction, correlation_id: correlation_id) do
+        nil ->
+          {:error, :not_found}
+
+        %Transaction{} = tx ->
+          update_attrs = %{}
+
+          update_attrs =
+            case fetch_key(attrs, "amount", :amount) do
+              {:ok, v} -> Map.put(update_attrs, :amount, cast_decimal(v))
+              :error -> update_attrs
+            end
+
+          update_attrs =
+            case fetch_key(attrs, "route", :route) do
+              {:ok, v} -> Map.put(update_attrs, :route, v)
+              :error -> update_attrs
+            end
+
+          tx
+          |> Transaction.changeset(update_attrs)
+          |> Repo.update()
+      end
+    else
+      {:error, :unavailable}
+    end
+  rescue
+    e ->
+      Logger.warning("Error updating transaction: #{Exception.message(e)}")
+      {:error, e}
+  end
+
   defp cast_decimal(nil), do: nil
   defp cast_decimal(v) when is_integer(v), do: Decimal.new(v)
   defp cast_decimal(v) when is_float(v), do: Decimal.from_float(v)
@@ -104,5 +148,12 @@ defmodule TasRinhaback3ed.Services.Transactions do
     end
   end
   defp cast_decimal(_), do: nil
-end
 
+  defp fetch_key(map, k1, k2) do
+    cond do
+      Map.has_key?(map, k1) -> {:ok, Map.get(map, k1)}
+      Map.has_key?(map, k2) -> {:ok, Map.get(map, k2)}
+      true -> :error
+    end
+  end
+end
