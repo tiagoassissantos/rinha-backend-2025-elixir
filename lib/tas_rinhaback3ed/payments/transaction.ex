@@ -19,9 +19,8 @@ defmodule TasRinhaback3ed.Payments.Transaction do
   @doc false
   def changeset(struct, attrs) do
     struct
-    |> cast(attrs, [:correlation_id, :amount, :route])
-    |> validate_required([:correlation_id, :amount, :route])
+    |> cast(attrs, [:correlation_id, :amount, :route, :inserted_at])
+    |> validate_required([:correlation_id, :amount, :route, :inserted_at])
     |> validate_inclusion(:route, ["default", "fallback"])
   end
 end
-
