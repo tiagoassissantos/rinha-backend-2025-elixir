@@ -17,18 +17,13 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
     Logger.info("[#{uid}] - Sending payment request to gateway...")
     url = mount_base_url(@default_base_url, opts)
 
-    with :ok <- make_request(url, params, "default", uid) do
-      Logger.info("[#{uid}] - Payment request succeeded.")
-      :ok
-    else
-      # only fallback on pool timeout / connection queue pressure
-      {:error, :pool_timeout} ->
-        Logger.error("[#{uid}] - Primary gateway timed out (pool pressure). Trying fallback...")
-        fallback_url = mount_base_url(@fallback_base_url, opts)
-        make_request(fallback_url, params, "fallback", uid)
+    case make_request(url, params, "default", uid) do
+      :ok ->
+        Logger.info("[#{uid}] - Payment request succeeded.")
+        :ok
 
-      # anything else: bubble up
       {:error, reason} ->
+        Logger.error("[#{uid}] - Payment request failed: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -51,50 +46,19 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
           TasRinhaback3ed.Services.Transactions.store_success(params, route)
           :ok
 
-        # Finch reports queue pressure timeouts like this:
-        {:error, %Finch.Error{reason: :pool_timeout} = e} ->
-          Logger.error("[#{uid}] - Payment gateway pool timeout at #{url}: #{inspect(e)}")
-          {:error, :pool_timeout}
-
-        # Other Finch errors (not eligible for fallback)
-        {:error, %Finch.Error{reason: reason} = e} ->
-          Logger.error("[#{uid}] - Finch.Error (#{inspect(reason)}): #{inspect(e)}")
-          {:error, reason}
-
-        # Mint transport layer
-        {:error, %Mint.TransportError{reason: reason} = e} ->
-          Logger.error("[#{uid}] - Mint.TransportError (#{inspect(reason)}): #{inspect(e)}")
-          {:error, reason}
-
-        # Any other exception struct
-        {:error, %_{} = e} ->
-          Logger.error("[#{uid}] - Exception struct: #{inspect(e)} | message: #{Exception.message(e)}")
-          {:error, e}
-
-        # Unknown error term
-        {:error, other} ->
-          Logger.error("[#{uid}] - Unknown error term: #{inspect(other)}")
-          {:error, other}
+        {:error, error} ->
+          Logger.error("[#{uid}] - Request error: #{inspect(error)}")
+          {:error, error}
       end
     rescue
-      # Convert unexpected raises (like NimblePool.exit!/3) to {:error, ...}
+      # Convert unexpected raises to {:error, e} so callers can handle uniformly
       e ->
-        Logger.error("[#{uid}] - Unexpected exception: " <> Exception.format(:error, e, __STACKTRACE__))
-        if Exception.message(e) |> to_string() |> String.contains?("unable to provide a connection within the timeout") do
-          {:error, :pool_timeout}
-        else
-          {:error, e}
-        end
+        Logger.error("[#{uid}] - Unexpected exception during request: #{inspect(e)}")
+        {:error, e}
     catch
       :exit, reason ->
-        # Some layers may exit instead of raising; log and map if it's pool pressure
         Logger.error("[#{uid}] - EXIT during request: #{inspect(reason)}")
-        msg = to_string(reason)
-        if String.contains?(msg, "unable to provide a connection within the timeout") do
-          {:error, :pool_timeout}
-        else
-          {:error, reason}
-        end
+        {:error, reason}
     end
   end
 
