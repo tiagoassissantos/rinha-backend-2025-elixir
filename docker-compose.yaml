@@ -30,8 +30,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.35"
-          memory: "104MB"
+          cpus: "0.3"
+          memory: "122MB"
 
   app2:
     image: elixir:1.18-alpine
@@ -64,8 +64,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.35"
-          memory: "104MB"
+          cpus: "0.3"
+          memory: "122MB"
 
   nginx:
     image: nginx:alpine
@@ -83,8 +83,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.4"
-          memory: "27MB"
+          cpus: "0.2"
+          memory: "26MB"
 
   postgres:
     image: postgres:17-alpine
@@ -104,6 +104,11 @@ services:
       - pgdata:/var/lib/postgresql/data
     networks:
       - appnet
+    deploy:
+      resources:
+        limits:
+          cpus: "0.7"
+          memory: "80MB"
 
 networks:
   payment-processor:

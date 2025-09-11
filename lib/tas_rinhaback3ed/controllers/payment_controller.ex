@@ -9,17 +9,11 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
   alias Decimal, as: D
 
   def payments(conn, params) do
-    case validate_params(params) do
-      {:ok, _normalized} ->
+    #case validate_params(params) do
+    #  {:ok, _normalized} ->
         case PaymentQueue.enqueue(params) do
           {:ok, :queued} ->
-            # TasRinhaback3ed.Services.Transactions.store_success(params, "default")
-
-            response = %{
-              status: "queued",
-              correlationId: Map.get(params, "correlationId"),
-              received_params: params
-            }
+            response = %{status: "ok"}
 
             JSON.send_json(conn, 202, response)
 
@@ -27,9 +21,9 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
             JSON.send_json(conn, 503, %{error: "queue_full"})
         end
 
-      {:error, errors} ->
-        JSON.send_json(conn, 400, %{error: "invalid_request", errors: errors})
-    end
+    #  {:error, errors} ->
+    #    JSON.send_json(conn, 400, %{error: "invalid_request", errors: errors})
+    #end
   end
 
   def payments_summary(conn, params) when is_map(params) do
