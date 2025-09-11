@@ -33,7 +33,9 @@ defmodule TasRinhaback3ed.Services.Transactions do
       changeset = Transaction.changeset(%Transaction{}, attrs)
 
       case Repo.insert(changeset) do
-        {:ok, _} -> :ok
+        {:ok, _} ->
+          :ok
+
         {:error, changeset} ->
           Logger.warning("Failed to insert transaction: #{inspect(changeset.errors)}")
           :ok
@@ -55,16 +57,19 @@ defmodule TasRinhaback3ed.Services.Transactions do
   """
   @spec summary(DateTime.t(), DateTime.t()) ::
           {:ok,
-           %{default: %{totalRequests: non_neg_integer(), totalAmount: float()},
-             fallback: %{totalRequests: non_neg_integer(), totalAmount: float()}}}
+           %{
+             default: %{totalRequests: non_neg_integer(), totalAmount: float()},
+             fallback: %{totalRequests: non_neg_integer(), totalAmount: float()}
+           }}
           | {:error, :unavailable}
   def summary(%DateTime{} = from_dt, %DateTime{} = to_dt) do
     if repo_available?() do
       q =
-        from t in Transaction,
+        from(t in Transaction,
           where: t.inserted_at >= ^from_dt and t.inserted_at < ^to_dt,
           group_by: t.route,
           select: {t.route, count(t.id), sum(t.amount)}
+        )
 
       rows = Repo.all(q)
 
@@ -104,7 +109,8 @@ defmodule TasRinhaback3ed.Services.Transactions do
   """
   @spec update_transaction(String.t(), map()) ::
           {:ok, Transaction.t()} | {:error, :not_found} | {:error, term()}
-  def update_transaction(correlation_id, attrs) when is_binary(correlation_id) and is_map(attrs) do
+  def update_transaction(correlation_id, attrs)
+      when is_binary(correlation_id) and is_map(attrs) do
     if repo_available?() do
       case Repo.get_by(Transaction, correlation_id: correlation_id) do
         nil ->
@@ -141,12 +147,14 @@ defmodule TasRinhaback3ed.Services.Transactions do
   defp cast_decimal(nil), do: nil
   defp cast_decimal(v) when is_integer(v), do: Decimal.new(v)
   defp cast_decimal(v) when is_float(v), do: Decimal.from_float(v)
+
   defp cast_decimal(v) when is_binary(v) do
     case Decimal.parse(v) do
       {d, ""} -> d
       _ -> nil
     end
   end
+
   defp cast_decimal(_), do: nil
 
   defp fetch_key(map, k1, k2) do

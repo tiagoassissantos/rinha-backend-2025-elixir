@@ -9,21 +9,21 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
   alias Decimal, as: D
 
   def payments(conn, params) do
-    #case validate_params(params) do
+    # case validate_params(params) do
     #  {:ok, _normalized} ->
-        case PaymentQueue.enqueue(params) do
-          {:ok, :queued} ->
-            response = %{status: "ok"}
+    case PaymentQueue.enqueue(params) do
+      {:ok, :queued} ->
+        response = %{status: "ok"}
 
-            JSON.send_json(conn, 202, response)
+        JSON.send_json(conn, 202, response)
 
-          {:error, :queue_full} ->
-            JSON.send_json(conn, 503, %{error: "queue_full"})
-        end
+      {:error, :queue_full} ->
+        JSON.send_json(conn, 503, %{error: "queue_full"})
+    end
 
     #  {:error, errors} ->
     #    JSON.send_json(conn, 400, %{error: "invalid_request", errors: errors})
-    #end
+    # end
   end
 
   def payments_summary(conn, params) when is_map(params) do
@@ -67,7 +67,9 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
 
   defp require_iso8601(params, key) do
     case Map.get(params, key) do
-      nil -> {:error, [%{field: key, message: "is required"}]}
+      nil ->
+        {:error, [%{field: key, message: "is required"}]}
+
       value when is_binary(value) ->
         case DateTime.from_iso8601(value) do
           {:ok, dt, _offset} -> {:ok, dt}

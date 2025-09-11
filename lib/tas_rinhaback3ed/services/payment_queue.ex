@@ -66,12 +66,17 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   def handle_call({:enqueue, payload}, _from, state) do
     cond do
       state.max_queue_size != :infinity and state.queued_count >= state.max_queue_size ->
+        :telemetry.execute([:tas, :queue, :drop], %{queue_len: state.queued_count}, %{})
+        emit_state(state)
         {:reply, {:error, :queue_full}, state}
 
       true ->
-        q = :queue.in(payload, state.queue)
+        entry = %{payload: payload, enq_mono: System.monotonic_time()}
+        q = :queue.in(entry, state.queue)
         state = %{state | queue: q, queued_count: state.queued_count + 1}
+        :telemetry.execute([:tas, :queue, :enqueue], %{queue_len: state.queued_count}, %{})
         state = dispatch(state)
+        emit_state(state)
         {:reply, {:ok, :queued}, state}
     end
   end
@@ -91,6 +96,7 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
     end
 
     state = dispatch(state)
+    emit_state(state)
     {:noreply, state}
   end
 
@@ -121,10 +127,18 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
 
   defp do_dispatch(state) do
     case :queue.out(state.queue) do
-      {{:value, payload}, q1} ->
+      {{:value, %{payload: payload, enq_mono: t0}}, q1} ->
+        now = System.monotonic_time()
+        wait_ms = System.convert_time_unit(now - t0, :native, :millisecond)
+        :telemetry.execute([:tas, :queue, :wait_time], %{wait_ms: wait_ms}, %{})
+
         task =
           Task.Supervisor.async_nolink(TasRinhaback3ed.PaymentTaskSup, fn ->
-            PaymentGateway.send_payment(payload)
+            :telemetry.span([:tas, :queue, :job], %{wait_ms: wait_ms}, fn ->
+              result = PaymentGateway.send_payment(payload)
+              meta = %{result: if(match?({:error, _}, result), do: :error, else: :ok)}
+              {result, meta}
+            end)
           end)
 
         tasks = Map.put(state.tasks, task.ref, {task, payload})
@@ -137,10 +151,21 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
             tasks: tasks
         }
 
+        emit_state(state)
         do_dispatch(state)
 
       {:empty, _q} ->
-        %{state | queued_count: 0}
+        new_state = %{state | queued_count: 0}
+        emit_state(new_state)
+        new_state
     end
+  end
+
+  defp emit_state(state) do
+    :telemetry.execute(
+      [:tas, :queue, :state],
+      %{queue_len: state.queued_count, in_flight: state.in_flight},
+      %{}
+    )
   end
 end

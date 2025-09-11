@@ -18,7 +18,7 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
 
     case make_request(url, params, "default", uid) do
       {:ok, _resp} ->
-        #Logger.info("[#{uid}] - Payment request succeeded.")
+        # Logger.info("[#{uid}] - Payment request succeeded.")
         :ok
 
       {:error, reason} ->
@@ -35,6 +35,7 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
       headers = [{"Content-Type", "application/json"}]
       # Optional debug timeouts to help reproduce failures locally
       base_opts = [json: params, headers: headers]
+
       opts =
         if Application.get_env(:tas_rinhaback_3ed, :payments_debug, false) do
           Keyword.merge(base_opts, receive_timeout: 2_000, connect_options: [timeout: 1_000])
@@ -44,26 +45,34 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
 
       case Req.post(url, opts) do
         {:ok, resp} ->
-          #Logger.info("[#{uid}] - Response status: #{resp.status}")
+          # Logger.info("[#{uid}] - Response status: #{resp.status}")
           if resp.status == 500 do
             new_route = define_route(route)
-            Logger.error("[#{uid}] - #{route} gateway error #{resp.status}. Trying #{new_route}...")
+
+            Logger.error(
+              "[#{uid}] - #{route} gateway error #{resp.status}. Trying #{new_route}..."
+            )
+
             new_url = mount_base_url(@fallback_base_url, opts)
             make_request(new_url, params, new_route, uid)
           else
             TasRinhaback3ed.Services.Transactions.store_success(params, route)
             # Update existing transaction (by correlation_id) with final route/amount
-            #_ = TasRinhaback3ed.Services.Transactions.update_transaction(
+            # _ = TasRinhaback3ed.Services.Transactions.update_transaction(
             #  Map.get(params, "correlationId"),
             #  %{amount: Map.get(params, "amount"), route: route}
-            #)
+            # )
           end
 
           {:ok, resp}
 
         {:error, error} ->
           new_route = define_route(route)
-          Logger.error("[#{uid}] - #{route} gateway error #{inspect(error)}. Trying #{new_route}...")
+
+          Logger.error(
+            "[#{uid}] - #{route} gateway error #{inspect(error)}. Trying #{new_route}..."
+          )
+
           fallback_url = mount_base_url(@fallback_base_url, opts)
           make_request(fallback_url, params, new_route, uid)
           :ok
@@ -96,17 +105,17 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
     end
   end
 
-  #defp print_request_headers(request) do
+  # defp print_request_headers(request) do
   #  if request.options[:print_headers] do
   #    print_headers("> ", request.headers)
   #  end
 
   #  request
-  #end
+  # end
 
-  #defp print_headers(prefix, headers) do
+  # defp print_headers(prefix, headers) do
   #  for {name, value} <- headers do
   #    Logger.info([prefix, name, ": ", value])
   #  end
-  #end
+  # end
 end

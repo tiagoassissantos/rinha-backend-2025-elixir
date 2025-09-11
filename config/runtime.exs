@@ -35,6 +35,7 @@ if config_env() in [:dev, :prod] do
 
   ssl = System.get_env("DB_SSL", "false") in ["1", "true", "TRUE", "yes", "on"]
 
-  config :tas_rinhaback_3ed, TasRinhaback3ed.Repo,
-    Keyword.merge(repo_config, pool_size: pool_size, ssl: ssl, log: false)
+  config :tas_rinhaback_3ed,
+         TasRinhaback3ed.Repo,
+         Keyword.merge(repo_config, pool_size: pool_size, ssl: ssl, log: false)
 end

@@ -6,6 +6,8 @@ defmodule TasRinhaback3ed.Router do
 
   plug(Plug.RequestId)
   plug(Plug.Logger)
+  # Lightweight request timing events for telemetry
+  plug(Plug.Telemetry, event_prefix: [:tas, :http])
 
   plug(Plug.Parsers,
     parsers: [:json, :urlencoded, :multipart],
@@ -27,6 +29,9 @@ defmodule TasRinhaback3ed.Router do
   get "/payments-summary" do
     PaymentController.payments_summary(conn, conn.params)
   end
+
+  # Expose Prometheus metrics via PromEx at /metrics
+  forward("/metrics", to: PromEx.Plug, init_opts: [prom_ex_module: TasRinhaback3ed.PromEx])
 
   match _ do
     JSON.send_json(conn, 404, %{error: "not_found"})

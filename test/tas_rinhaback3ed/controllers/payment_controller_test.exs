@@ -70,6 +70,7 @@ defmodule TasRinhaback3ed.Controllers.PaymentControllerTest do
   describe "GET /payments-summary" do
     test "returns the expected summary JSON with from/to params" do
       qs = "from=2020-07-10T12:34:56.000Z&to=2020-07-10T12:35:56.000Z"
+
       conn =
         :get
         |> conn("/payments-summary?" <> qs)

@@ -37,7 +37,10 @@ defmodule TasRinhaback3ed.Application do
         ]
       end
 
-    children = repo_children ++ queue_children ++ http_children
+    # Start PromEx before HTTP server so metrics are available immediately
+    observability_children = [TasRinhaback3ed.PromEx]
+
+    children = repo_children ++ queue_children ++ observability_children ++ http_children
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

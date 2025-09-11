@@ -25,6 +25,8 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Docker: `Dockerfile`, `docker-compose.yaml`, `infra/nginx.conf`
 - Tests: `test/**`
  - Repo (Ecto): `lib/tas_rinhaback3ed/repo.ex`, migrations in `priv/repo/migrations/`
+ - Observability: PromEx (`lib/tas_rinhaback3ed/prom_ex.ex`), `/metrics` route
+ - Infra: Prometheus config (`infra/prometheus.yml`), Grafana dashboard (`infra/grafana-dashboard.json`)
 
 ## Run Locally
 - Install deps: `mix deps.get`
@@ -32,11 +34,14 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Change port: `PORT=4001 mix run --no-halt`
 - Interactive shell: `iex -S mix run --no-halt`
 - Health check: `curl -i http://localhost:9999/health`
+ - Prometheus: `http://localhost:9090` (when using compose)
+ - Grafana: `http://localhost:3000` (admin/admin; preprovisioned)
 
 ## Endpoints (current)
 - GET `/health`: returns `{ "status": "ok" }`.
 - POST `/payments`: validates input and enqueues the payload for asynchronous forwarding to the external payment gateway. Returns 202 with `{ status: "queued", correlationId, received_params }` when accepted; returns 400 with validation errors when invalid. May return 503 `{ error: "queue_full" }` if the in-memory queue is saturated (see PaymentQueue config).
  - GET `/payments-summary`: requires `from` and `to` ISO8601 query params and returns an aggregated summary from the DB when available; otherwise falls back to a stub payload. Responds 400 with `{ error: "invalid_request", errors: [...] }` if params are missing/invalid.
+ - GET `/metrics`: Prometheus exposition of metrics (PromEx). Scrape with Prometheus.
 
 ## External Gateways
 - Primary base URL: `http://localhost:8001`
@@ -51,6 +56,12 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Concurrency: configurable via `:tas_rinhaback_3ed, :payment_queue, :max_concurrency` (default: `System.schedulers_online()*2`).
 - Back-pressure: optional `:max_queue_size` (default: `:infinity`). When full, controller returns `503 {"error":"queue_full"}`.
 - Supervision: started via `TasRinhaback3ed.Application` with a named `Task.Supervisor` (`TasRinhaback3ed.PaymentTaskSup`).
+ - Telemetry: emits events for queue monitoring (PromEx exports under `tas_rinhaback_3ed_prom_ex_queue_*`)
+   - `[:tas, :queue, :enqueue]` (counter)
+   - `[:tas, :queue, :drop]` (counter)
+   - `[:tas, :queue, :state]` (gauges `queue.length`, `queue.in_flight`)
+   - `[:tas, :queue, :wait_time]` (histogram in ms)
+   - `[:tas, :queue, :job, :start|:stop|:exception]` (span for job duration)
 
 ## Configuration
 - Port (prod): `PORT` env var. Default: `9999`.
@@ -65,6 +76,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Use `TasRinhaback3ed.JSON.send_json/3` for consistent responses.
 - Avoid starting the HTTP server inside code generators or tests.
  - For async flows, enqueue work in `PaymentQueue` and keep controllers fast (respond 202 on acceptance).
+ - Metrics: keep tags low-cardinality (avoid per-ID tags); prefer histograms with coarse buckets.
 
 ## Tests
 - Run all: `mix test`
@@ -85,6 +97,8 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
   - Backends listen on `app1:4001` and `app2:4002` (nginx upstream)
   - Compose mounts host `${HOME}/.mix -> /root/.mix` so Hex is available offline
   - PostgreSQL available as `postgres:5432` (host mapped to `5432`), user `postgres`, password `postgres`, database `tasrinha_dev`.
+  - Prometheus available at `http://localhost:9090` (scrapes `app1:4001` and `app2:4002` `/metrics`)
+  - Grafana available at `http://localhost:3000` (datasource/dashboards provisioned)
 
 ### Dev Workflow (making code changes)
 - Restart apps to pick up changes:
@@ -179,12 +193,16 @@ This section is for automation agents (e.g., Codex CLI) contributing to this rep
 - Generate module: `mix gen.module TasRinhaback3ed.Domain.Example`
  - Create DB: `mix ecto.create`
  - Migrate DB: `mix ecto.migrate`
+ - View metrics locally: `curl -s http://localhost:9999/metrics | head`
+ - Run Prometheus: `docker run --rm -p 9090:9090 -v $(pwd)/infra/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus`
+ - Run Grafana: `docker run --rm -p 3000:3000 grafana/grafana` (add Prometheus datasource http://host.docker.internal:9090 and import `infra/grafana-dashboard.json`)
 
 ## Definition of Done
 - Compiles with no warnings relevant to the change.
 - All tests pass locally (`mix test`).
 - New code is formatted and documented.
 - Public contracts (routes, payloads) updated in README or this file if changed.
+ - Observability updated when endpoints/flows change (metrics/events/docs).
 
 ## Guardrails
 - Don’t change unrelated modules or global behaviors.

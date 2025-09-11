@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: "tas_rinhaback_3ed"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["app1:4001", "app2:4002"]

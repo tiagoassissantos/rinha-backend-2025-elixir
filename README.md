@@ -63,10 +63,12 @@ Run tests
   mix test
 
 Docker & Compose
-- Run (two instances + nginx LB on 9999):
+- Run (two instances + nginx LB on 9999) + Prometheus (9090) + Grafana (3000):
   docker compose up
-  Visit http://localhost:9999/health
-  Nginx proxies to app1:4001 and app2:4002
+  - App (via nginx LB): http://localhost:9999/health
+  - Prometheus UI: http://localhost:9090
+  - Grafana UI: http://localhost:3000 (login admin/admin)
+  Nginx proxies to app1:4001 and app2:4002. Prometheus scrapes app1/app2 /metrics directly.
   PostgreSQL service available on localhost:5432 (container name `postgres`).
 
 - After code changes:
@@ -76,6 +78,12 @@ Docker & Compose
   docker compose logs -f app1 app2 nginx
 
 - Details and variations are in `AGENTS.md` → Docker & Compose.
+
+Observability in Compose
+- Prometheus uses `infra/prometheus.yml` and scrapes `app1:4001` and `app2:4002` at `/metrics`.
+- Grafana is pre-provisioned with:
+  - Prometheus datasource at `http://prometheus:9090`
+  - Dashboard from `infra/grafana/dashboards/tas.json` (Panels: HTTP RPS/latency/errors, queue length/in-flight, rates, durations, wait time)
 
 Offline-friendly setup
 - Ensure Hex is installed on the host: `mix local.hex --force`
@@ -103,11 +111,36 @@ Endpoints
 - GET `/health`: `{ "status": "ok" }`.
 - POST `/payments`: validates input and enqueues asynchronously; responds `202` with `{ status: "queued", correlationId, received_params }`. May return `400` on validation errors or `503` when the in-memory queue is full.
 - GET `/payments-summary?from=<ISO8601>&to=<ISO8601>`: requires `from` and `to` query params (ISO8601 datetime). Returns an aggregated summary from the DB when available; otherwise falls back to a stub payload. Returns `400` with `{ error: "invalid_request", errors: [...] }` if missing/invalid.
+ - GET `/metrics`: Prometheus metrics (via PromEx). Suitable for scraping by Prometheus.
 
 Notes
 - The project is intentionally minimal (Plug + Bandit only). Modules live under `lib/tas_rinhaback3ed/`.
 - For structured JSON parsing, `Plug.Parsers` is configured to use Jason.
 - Consider adding environments (dev/test/prod) specific configuration as needs grow.
+
+Observability
+- Metrics exporter: PromEx at `/metrics` (text exposition format)
+- HTTP timings: via PromEx PlugRouter plugin on `[:tas,:http]` events; exported as `tas_rinhaback_3ed_prom_ex_plug_router_http_*` (duration histogram in ms, requests_total)
+- Queue metrics: exported as `tas_rinhaback_3ed_prom_ex_queue_*` (e.g., `*_enqueued_total`, `*_dropped_total`, `*_length`, `*_in_flight`, `*_job_duration_milliseconds_*`, `*_wait_time_milliseconds_*`)
+- DB metrics: via PromEx Ecto plugin (query timings)
+- VM metrics: via PromEx BEAM plugin (schedulers, memory, run queue)
+
+Prometheus scrape example:
+  - job_name: tas_rinhaback_3ed
+    static_configs:
+      - targets: ['localhost:9999']
+    metrics_path: /metrics
+
+Quick start: Prometheus + Grafana (Docker)
+- Prometheus (port 9090):
+  docker run --rm -p 9090:9090 \
+    -v $(pwd)/infra/prometheus.yml:/etc/prometheus/prometheus.yml \
+    prom/prometheus
+
+- Grafana (port 3000):
+  docker run --rm -p 3000:3000 grafana/grafana
+  # In Grafana UI: add a Prometheus datasource at http://host.docker.internal:9090
+  # Import dashboard from file: infra/grafana-dashboard.json
  
 Database (Ecto)
 - Repo: `TasRinhaback3ed.Repo` (PostgreSQL)
