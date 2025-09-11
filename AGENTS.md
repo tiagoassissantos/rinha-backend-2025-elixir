@@ -56,7 +56,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Concurrency: configurable via `:tas_rinhaback_3ed, :payment_queue, :max_concurrency` (default: `System.schedulers_online()*2`).
 - Back-pressure: optional `:max_queue_size` (default: `:infinity`). When full, controller returns `503 {"error":"queue_full"}`.
 - Supervision: started via `TasRinhaback3ed.Application` with a named `Task.Supervisor` (`TasRinhaback3ed.PaymentTaskSup`).
- - Telemetry: emits events for queue monitoring (PromEx exports under `tas_rinhaback_3ed_prom_ex_queue_*`)
+ - Telemetry: emits events for queue monitoring
    - `[:tas, :queue, :enqueue]` (counter)
    - `[:tas, :queue, :drop]` (counter)
    - `[:tas, :queue, :state]` (gauges `queue.length`, `queue.in_flight`)
@@ -170,8 +170,8 @@ This section is for automation agents (e.g., Codex CLI) contributing to this rep
 - Make safe, minimal, well‑scoped changes.
 - Maintain routing, controller, and service boundaries.
 - Preserve gateway fallback semantics and JSON response consistency.
-- Maintain README.md always updated with changes made by agents.
-- Always is necessary update this AGENTS.md
+- README.md is the project documentation. Maintain README.md always updated with changes made in project.
+- AGENTS.md are instructions for AI agents. Update AGENTS.md only with necessary information needed for AI agents
 
 ## High‑Value Starting Points
 - New HTTP endpoint:
