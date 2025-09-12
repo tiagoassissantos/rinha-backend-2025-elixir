@@ -30,9 +30,6 @@ defmodule TasRinhaback3ed.Router do
     PaymentController.payments_summary(conn, conn.params)
   end
 
-  # Expose Prometheus metrics via PromEx at /metrics
-  forward("/metrics", to: PromEx.Plug, init_opts: [prom_ex_module: TasRinhaback3ed.PromEx])
-
   match _ do
     JSON.send_json(conn, 404, %{error: "not_found"})
   end

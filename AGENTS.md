@@ -25,8 +25,6 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Docker: `Dockerfile`, `docker-compose.yaml`, `infra/nginx.conf`
 - Tests: `test/**`
  - Repo (Ecto): `lib/tas_rinhaback3ed/repo.ex`, migrations in `priv/repo/migrations/`
- - Observability: PromEx (`lib/tas_rinhaback3ed/prom_ex.ex`), `/metrics` route
- - Infra: Prometheus config (`infra/prometheus.yml`), Grafana dashboard (`infra/grafana-dashboard.json`)
 
 ## Run Locally
 - Install deps: `mix deps.get`
@@ -41,7 +39,6 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - GET `/health`: returns `{ "status": "ok" }`.
 - POST `/payments`: validates input and enqueues the payload for asynchronous forwarding to the external payment gateway. Returns 202 with `{ status: "queued", correlationId, received_params }` when accepted; returns 400 with validation errors when invalid. May return 503 `{ error: "queue_full" }` if the in-memory queue is saturated (see PaymentQueue config).
  - GET `/payments-summary`: requires `from` and `to` ISO8601 query params and returns an aggregated summary from the DB when available; otherwise falls back to a stub payload. Responds 400 with `{ error: "invalid_request", errors: [...] }` if params are missing/invalid.
- - GET `/metrics`: Prometheus exposition of metrics (PromEx). Scrape with Prometheus.
 
 ## External Gateways
 - Primary base URL: `http://localhost:8001`
