@@ -112,6 +112,7 @@ What’s wired
 - HTTP server: traces around requests (Plug.Telemetry → OTel spans)
 - Ecto: DB query spans
 - Outbound HTTP: Req/Finch client spans
+- Trace propagation: outbound HTTP includes W3C `traceparent`/`baggage` headers by default
 - Metrics: latency/throughput emitted by collector spanmetrics connector, scraped by Prometheus
 
 How to use
@@ -123,6 +124,10 @@ How to use
 Notes
 - The app exports OTLP to `otel-collector:4317` (gRPC). Override with `OTEL_EXPORTER_OTLP_ENDPOINT` if needed.
 - Prometheus scrapes the collector at `otel-collector:8889` (not the app directly).
+
+Outbound tracing details
+- Default: `OpentelemetryReq` is attached with `propagate_trace_headers: true` in `lib/tas_rinhaback3ed/http.ex`.
+- Per‑call override: pass `propagate_trace_headers: false` in a specific `TasRinhaback3ed.HTTP.request/1` call if you need to suppress header injection.
 
 Notes
 - Nginx maps host `9999 -> nginx:80`, and proxies to `app1:4001` and `app2:4002`.

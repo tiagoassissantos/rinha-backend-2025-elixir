@@ -48,6 +48,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Effective URL is `<base>/payments` (service appends `/payments`).
 - Config override: `Application.get_env(:tas_rinhaback_3ed, :payments_base_url, ...)` or pass `base_url:` option to `PaymentGateway.send_payment/2` in tests.
 - Fallback behavior: only on pool pressure timeouts (`:pool_timeout`). Other errors bubble up.
+- Tracing: outbound requests propagate W3C `traceparent`/`baggage` headers by default via `OpentelemetryReq`. You can disable on a specific call by passing `propagate_trace_headers: false` to `TasRinhaback3ed.HTTP.request/1`.
 
 ## Async Queue (PaymentQueue)
 - Module: `lib/tas_rinhaback3ed/services/payment_queue.ex`

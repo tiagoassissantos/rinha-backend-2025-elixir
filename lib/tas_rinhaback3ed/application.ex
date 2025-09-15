@@ -20,8 +20,7 @@ defmodule TasRinhaback3ed.Application do
     opentel_children = [
       {TelemetryMetricsPrometheus, metrics: TasRinhaback3ed.Metrics.definitions()},
       # telemetry_poller expects the evaluated list, not a function capture
-      {:telemetry_poller,
-       measurements: TasRinhaback3ed.Metrics.vm_measurements(), period: 5_000}
+      {:telemetry_poller, measurements: TasRinhaback3ed.Metrics.vm_measurements(), period: 5_000}
     ]
 
     queue_children = [

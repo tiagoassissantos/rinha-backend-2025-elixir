@@ -77,14 +77,18 @@ defmodule TasRinhaback3ed.Metrics do
 
   def report_run_queues({total, cpu, io}) do
     :telemetry.execute([:vm, :total_run_queue_lengths], %{
-      total: total, cpu: cpu, io: io
+      total: total,
+      cpu: cpu,
+      io: io
     })
   end
 
   # Some OTP versions may return a single integer for total run queue lengths
   def report_run_queues(total) when is_integer(total) do
     :telemetry.execute([:vm, :total_run_queue_lengths], %{
-      total: total, cpu: 0, io: 0
+      total: total,
+      cpu: 0,
+      io: 0
     })
   end
 
@@ -96,9 +100,12 @@ defmodule TasRinhaback3ed.Metrics do
     Enum.each(@genservers, fn
       {:name, name} ->
         if pid = Process.whereis(name), do: emit_mailbox(name, pid)
+
       {:pid, pid} when is_pid(pid) ->
         emit_mailbox(inspect(pid), pid)
-      _ -> :ok
+
+      _ ->
+        :ok
     end)
   end
 
@@ -106,7 +113,9 @@ defmodule TasRinhaback3ed.Metrics do
     case Process.info(pid, :message_queue_len) do
       {:message_queue_len, len} ->
         :telemetry.execute([:genserver, :mailbox], %{length: len}, %{name: label})
-      _ -> :ok
+
+      _ ->
+        :ok
     end
   end
 

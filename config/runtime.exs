@@ -49,15 +49,16 @@ if config_env() in [:dev, :prod] do
   config :opentelemetry, :resource, service: [name: service_name]
 
   # Export traces/metrics via OTLP gRPC to the Collector
-  config :opentelemetry, :processors,
-    [{:otel_batch_processor,
-      %{
-        exporter:
-          {:opentelemetry_exporter,
-           %{
-             endpoints: [
-               {:grpc, String.to_charlist(collector_host), collector_grpc_port, []}
-             ]
-           }}
-      }}]
+  config :opentelemetry, :processors, [
+    {:otel_batch_processor,
+     %{
+       exporter:
+         {:opentelemetry_exporter,
+          %{
+            endpoints: [
+              {:grpc, String.to_charlist(collector_host), collector_grpc_port, []}
+            ]
+          }}
+     }}
+  ]
 end

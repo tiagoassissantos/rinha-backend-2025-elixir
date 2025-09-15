@@ -9,7 +9,14 @@ defmodule TasRinhaback3ed.HTTP do
 
   defp base_client do
     Req.new()
-    |> OpentelemetryReq.attach()
+    |> OpentelemetryReq.attach(
+      propagate_trace_headers: true,
+      # Record templated path as attribute so it’s searchable (TraceQL)
+      opt_in_attrs: [OpenTelemetry.SemConv.Incubating.URLAttributes.url_template()],
+      # Capture common correlation headers when present
+      request_header_attrs: ["x-request-id", "x-correlation-id"],
+      response_header_attrs: ["x-request-id", "x-correlation-id"]
+    )
     |> Req.merge(connect_options: [transport_opts: [verify: :verify_peer]])
   end
 

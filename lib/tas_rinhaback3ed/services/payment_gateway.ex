@@ -43,7 +43,19 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
           base_opts
         end
 
-      req_opts = Keyword.merge([method: :post, url: url], opts)
+      # Give client spans a readable, searchable name
+      req_opts =
+        Keyword.merge(
+          [
+            method: :post,
+            url: url,
+            span_name: "POST /payments (#{route})",
+            # Ensure URL template attribute is set and span name is searchable
+            path_params_style: :colon,
+            path_params: [resource: "payments"]
+          ],
+          opts
+        )
 
       case TasRinhaback3ed.HTTP.request(req_opts) do
         {:ok, resp} ->
