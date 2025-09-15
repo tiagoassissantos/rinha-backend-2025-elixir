@@ -43,7 +43,9 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
           base_opts
         end
 
-      case Req.post(url, opts) do
+      req_opts = Keyword.merge([method: :post, url: url], opts)
+
+      case TasRinhaback3ed.HTTP.request(req_opts) do
         {:ok, resp} ->
           # Logger.info("[#{uid}] - Response status: #{resp.status}")
           if resp.status == 500 do

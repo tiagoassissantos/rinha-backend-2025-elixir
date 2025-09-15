@@ -16,6 +16,10 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
+      # OpenTelemetry: export traces/metrics to Collector
+      - OTEL_SERVICE_NAME=tas_rinhaback_3ed
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
     command: >-
       sh -lc "mix run --no-halt"
     expose:
@@ -27,6 +31,7 @@ services:
       - payment-processor
     depends_on:
       - postgres
+      - otel-collector
     deploy:
       resources:
         limits:
@@ -50,6 +55,10 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
+      # OpenTelemetry: export traces/metrics to Collector
+      - OTEL_SERVICE_NAME=tas_rinhaback_3ed
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
     command: >-
       sh -lc "mix run --no-halt"
     expose:
@@ -61,6 +70,7 @@ services:
       - payment-processor
     depends_on:
       - postgres
+      - otel-collector
     deploy:
       resources:
         limits:
@@ -125,17 +135,42 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
     networks:
       - appnet
-    deploy:
-      resources:
-        limits:
-          cpus: "0.3"
-          memory: "128MB"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    depends_on:
+      - tempo
+    volumes:
+      - ./infra/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus scrape endpoint
+    command: ["--config=/etc/otelcol/config.yaml"]
+    networks:
+      - appnet
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./infra/tempo.yaml:/etc/tempo.yaml:ro
+    ports:
+      - "3200:3200"   # Tempo HTTP API (Grafana datasource)
+      # OTLP ingest (Collector -> Tempo); no host mapping required
+      # - "4317:4317" # OTLP gRPC
+      # - "4318:4318" # OTLP HTTP
+    networks:
+      - appnet
 
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
     depends_on:
       - prometheus
+      - tempo
     ports:
       - "3000:3000"
     volumes:
@@ -143,15 +178,17 @@ services:
       - ./infra/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
       - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_DEFAULT_THEME=dark
+      # Enable anonymous access (no authentication in home lab)
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_NAME=Main Org.
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_AUTH_DISABLE_SIGNOUT_MENU=true
+      # Quiet noisy auth warnings for anonymous (optional)
+      - GF_LOG_FILTERS=authn.service:info
     networks:
       - appnet
-    deploy:
-      resources:
-        limits:
-          cpus: "0.3"
-          memory: "256MB"
 
 networks:
   payment-processor:

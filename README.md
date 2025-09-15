@@ -58,8 +58,9 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
 - Change port: `PORT=4001 mix run --no-halt`
 - Interactive shell: `iex -S mix run --no-halt`
 - Health check: `curl -i http://localhost:9999/health`
- - Prometheus: `http://localhost:9090` (when using compose)
- - Grafana: `http://localhost:3000` (admin/admin; preprovisioned)
+- Prometheus: `http://localhost:9090` (scrapes OpenTelemetry Collector)
+- Grafana: `http://localhost:3000` (no login; anonymous access enabled)
+ - Tempo: `http://localhost:3200` (Tempo HTTP API; view traces in Grafana → Explore → Tempo)
 
 ## Configuration
 - Port (prod): `PORT` env var. Default: `9999`.
@@ -90,16 +91,38 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
   - Backends listen on `app1:4001` and `app2:4002` (nginx upstream)
   - Compose mounts host `${HOME}/.mix -> /root/.mix` so Hex is available offline
   - PostgreSQL available as `postgres:5432` (host mapped to `5432`), user `postgres`, password `postgres`, database `tasrinha_dev`.
-  - Prometheus available at `http://localhost:9090` (scrapes `app1:4001` and `app2:4002` `/metrics`)
-  - Grafana available at `http://localhost:3000` (datasource/dashboards provisioned)
+  - OpenTelemetry Collector (OTLP): `otel-collector:4317` (gRPC), `4318` (HTTP)
+  - Prometheus available at `http://localhost:9090` (scrapes `otel-collector:8889`)
+  - Grafana available at `http://localhost:3000` (anonymous access; Prometheus + Tempo datasources provisioned)
+  - Tempo HTTP API available at `http://localhost:3200` (use Grafana Explore → Tempo to browse traces)
 
 ### Dev Workflow (making code changes)
 - Restart apps to pick up changes:
   - `docker compose restart app1 app2`
 - View logs while iterating:
   - `docker compose logs -f app1 app2 nginx`
-- Tear down the stack:
+  - Tear down the stack:
   - `docker compose down` (add `--volumes` to clean deps/build caches if you mounted them)
+
+## Observability (OpenTelemetry)
+- Traces: Application → OpenTelemetry (OTLP) → OpenTelemetry Collector → Grafana Tempo → Grafana (Tempo datasource)
+- Metrics: Application → OpenTelemetry (OTLP) → OpenTelemetry Collector (spanmetrics) → Prometheus → Grafana
+
+What’s wired
+- HTTP server: traces around requests (Plug.Telemetry → OTel spans)
+- Ecto: DB query spans
+- Outbound HTTP: Req/Finch client spans
+- Metrics: latency/throughput emitted by collector spanmetrics connector, scraped by Prometheus
+
+How to use
+- Bring up stack: `docker compose up -d`
+- Hit the app: `curl -i http://localhost:9999/health`
+- View traces in Grafana: `http://localhost:3000` (Explore → Tempo; search service `tas_rinhaback_3ed`)
+- View metrics in Grafana: `http://localhost:3000` (Explore → Prometheus; try `sum(rate(service_calls_total[1m])) by (http_method, http_route, http_status_code)`)
+
+Notes
+- The app exports OTLP to `otel-collector:4317` (gRPC). Override with `OTEL_EXPORTER_OTLP_ENDPOINT` if needed.
+- Prometheus scrapes the collector at `otel-collector:8889` (not the app directly).
 
 Notes
 - Nginx maps host `9999 -> nginx:80`, and proxies to `app1:4001` and `app2:4002`.
@@ -131,12 +154,3 @@ What it creates
 Notes on generators
 - Phoenix offers rich generators (`mix phx.gen.*`) if you use Phoenix.
 - For non-Phoenix apps, custom Mix tasks like `mix gen.module` are the idiomatic way to scaffold files.
-
-
-
-
-
-
-
-
-

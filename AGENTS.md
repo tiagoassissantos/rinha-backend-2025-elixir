@@ -32,8 +32,10 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Change port: `PORT=4001 mix run --no-halt`
 - Interactive shell: `iex -S mix run --no-halt`
 - Health check: `curl -i http://localhost:9999/health`
- - Prometheus: `http://localhost:9090` (when using compose)
- - Grafana: `http://localhost:3000` (admin/admin; preprovisioned)
+ - OpenTelemetry Collector: `otel-collector:4317` (gRPC), `4318` (HTTP)
+ - Prometheus: `http://localhost:9090` (scrapes `otel-collector:8889`)
+ - Grafana: `http://localhost:3000` (no login; anonymous access enabled)
+ - Tempo: `http://localhost:3200` (Tempo HTTP API; view traces in Grafana → Explore → Tempo)
 
 ## Endpoints (current)
 - GET `/health`: returns `{ "status": "ok" }`.
@@ -94,8 +96,10 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
   - Backends listen on `app1:4001` and `app2:4002` (nginx upstream)
   - Compose mounts host `${HOME}/.mix -> /root/.mix` so Hex is available offline
   - PostgreSQL available as `postgres:5432` (host mapped to `5432`), user `postgres`, password `postgres`, database `tasrinha_dev`.
-  - Prometheus available at `http://localhost:9090` (scrapes `app1:4001` and `app2:4002` `/metrics`)
-  - Grafana available at `http://localhost:3000` (datasource/dashboards provisioned)
+  - OpenTelemetry Collector (OTLP): `otel-collector:4317` (gRPC), `4318` (HTTP)
+  - Prometheus available at `http://localhost:9090` (scrapes `otel-collector:8889`)
+  - Grafana available at `http://localhost:3000` (anonymous access; Prometheus + Tempo datasource provisioned)
+  - Tempo HTTP API available at `http://localhost:3200` (use Grafana Explore → Tempo to browse traces)
 
 ### Dev Workflow (making code changes)
 - Restart apps to pick up changes:
@@ -190,9 +194,10 @@ This section is for automation agents (e.g., Codex CLI) contributing to this rep
 - Generate module: `mix gen.module TasRinhaback3ed.Domain.Example`
  - Create DB: `mix ecto.create`
  - Migrate DB: `mix ecto.migrate`
- - View metrics locally: `curl -s http://localhost:9999/metrics | head`
- - Run Prometheus: `docker run --rm -p 9090:9090 -v $(pwd)/infra/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus`
- - Run Grafana: `docker run --rm -p 3000:3000 grafana/grafana` (add Prometheus datasource http://host.docker.internal:9090 and import `infra/grafana-dashboard.json`)
+- View metrics locally: `curl -s http://localhost:9999/metrics | head`
+- View metrics locally: `curl -s http://localhost:8889/metrics | head` (collector)
+- Run Prometheus: `docker run --rm -p 9090:9090 -v $(pwd)/infra/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus`
+- Run Grafana: `docker run --rm -p 3000:3000 grafana/grafana` (add Prometheus datasource http://host.docker.internal:9090 and import `infra/grafana-dashboard.json`). To mirror compose’s no‑auth setup, add envs: `-e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Admin -e GF_AUTH_DISABLE_LOGIN_FORM=true`.
 
 ## Definition of Done
 - Compiles with no warnings relevant to the change.

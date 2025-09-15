@@ -39,3 +39,25 @@ if config_env() in [:dev, :prod] do
          TasRinhaback3ed.Repo,
          Keyword.merge(repo_config, pool_size: pool_size, ssl: ssl, log: false)
 end
+
+# OpenTelemetry exporter/runtime configuration (dev + prod)
+if config_env() in [:dev, :prod] do
+  collector_host = System.get_env("OTEL_COLLECTOR_HOST", "otel-collector")
+  collector_grpc_port = String.to_integer(System.get_env("OTEL_COLLECTOR_GRPC_PORT", "4317"))
+  service_name = System.get_env("OTEL_SERVICE_NAME", "tas_rinhaback_3ed")
+
+  config :opentelemetry, :resource, service: [name: service_name]
+
+  # Export traces/metrics via OTLP gRPC to the Collector
+  config :opentelemetry, :processors,
+    [{:otel_batch_processor,
+      %{
+        exporter:
+          {:opentelemetry_exporter,
+           %{
+             endpoints: [
+               {:grpc, String.to_charlist(collector_host), collector_grpc_port, []}
+             ]
+           }}
+      }}]
+end
