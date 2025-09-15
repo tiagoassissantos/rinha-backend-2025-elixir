@@ -171,6 +171,7 @@ services:
     depends_on:
       - prometheus
       - tempo
+      - loki
     ports:
       - "3000:3000"
     volumes:
@@ -190,6 +191,32 @@ services:
     networks:
       - appnet
 
+  loki:
+    image: grafana/loki:3.5.5
+    container_name: loki
+    command: ["-config.file=/etc/loki/config.yml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./infra/loki-config.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+    networks:
+      - appnet
+
+  promtail:
+    image: grafana/promtail:3.5.5
+    container_name: promtail
+    depends_on:
+      - loki
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      - ./infra/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail_positions:/tmp
+    networks:
+      - appnet
+
 networks:
   payment-processor:
     external: true
@@ -198,6 +225,10 @@ networks:
 
 volumes:
   pgdata:
+    driver: local
+  loki_data:
+    driver: local
+  promtail_positions:
     driver: local
   prometheus_data:
     driver: local

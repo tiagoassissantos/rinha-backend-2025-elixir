@@ -32,7 +32,11 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   """
   @spec enqueue(payload()) :: enqueue_result()
   def enqueue(payload) when is_map(payload) do
-    GenServer.call(__MODULE__, {:enqueue, payload})
+    # Capture caller's Logger metadata (includes request_id set by Plug.RequestId)
+    caller_md = Logger.metadata()
+    # Capture current OpenTelemetry context so worker spans join the HTTP trace
+    otel_ctx = OpenTelemetry.Ctx.get_current()
+    GenServer.call(__MODULE__, {:enqueue, payload, caller_md, otel_ctx})
   end
 
   # Server callbacks
@@ -63,7 +67,7 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   end
 
   @impl true
-  def handle_call({:enqueue, payload}, _from, state) do
+  def handle_call({:enqueue, payload, caller_md, otel_ctx}, _from, state) do
     cond do
       state.max_queue_size != :infinity and state.queued_count >= state.max_queue_size ->
         :telemetry.execute([:tas, :queue, :drop], %{queue_len: state.queued_count}, %{})
@@ -71,7 +75,12 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
         {:reply, {:error, :queue_full}, state}
 
       true ->
-        entry = %{payload: payload, enq_mono: System.monotonic_time()}
+        entry = %{
+          payload: payload,
+          enq_mono: System.monotonic_time(),
+          logger_md: caller_md,
+          otel_ctx: otel_ctx
+        }
         q = :queue.in(entry, state.queue)
         state = %{state | queue: q, queued_count: state.queued_count + 1}
         :telemetry.execute([:tas, :queue, :enqueue], %{queue_len: state.queued_count}, %{})
@@ -127,17 +136,27 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
 
   defp do_dispatch(state) do
     case :queue.out(state.queue) do
-      {{:value, %{payload: payload, enq_mono: t0}}, q1} ->
+      {{:value, %{payload: payload, enq_mono: t0, logger_md: logger_md, otel_ctx: otel_ctx}}, q1} ->
         now = System.monotonic_time()
         wait_ms = System.convert_time_unit(now - t0, :native, :millisecond)
         :telemetry.execute([:tas, :queue, :wait_time], %{wait_ms: wait_ms}, %{})
 
         task =
           Task.Supervisor.async_nolink(TasRinhaback3ed.PaymentTaskSup, fn ->
+            # Restore caller's Logger metadata in this task so logs include request_id
+            if is_list(logger_md) and logger_md != [] do
+              Logger.metadata(logger_md)
+            end
+            # Attach parent OpenTelemetry context so spans join the HTTP request trace
+            token = if otel_ctx, do: OpenTelemetry.Ctx.attach(otel_ctx), else: nil
             :telemetry.span([:tas, :queue, :job], %{wait_ms: wait_ms}, fn ->
-              result = PaymentGateway.send_payment(payload)
-              meta = %{result: if(match?({:error, _}, result), do: :error, else: :ok)}
-              {result, meta}
+              try do
+                result = PaymentGateway.send_payment(payload)
+                meta = %{result: if(match?({:error, _}, result), do: :error, else: :ok)}
+                {result, meta}
+              after
+                if token, do: OpenTelemetry.Ctx.detach(token)
+              end
             end)
           end)
 

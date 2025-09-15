@@ -32,10 +32,12 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Change port: `PORT=4001 mix run --no-halt`
 - Interactive shell: `iex -S mix run --no-halt`
 - Health check: `curl -i http://localhost:9999/health`
- - OpenTelemetry Collector: `otel-collector:4317` (gRPC), `4318` (HTTP)
- - Prometheus: `http://localhost:9090` (scrapes `otel-collector:8889`)
- - Grafana: `http://localhost:3000` (no login; anonymous access enabled)
- - Tempo: `http://localhost:3200` (Tempo HTTP API; view traces in Grafana → Explore → Tempo)
+- OpenTelemetry Collector: `otel-collector:4317` (gRPC), `4318` (HTTP)
+- Prometheus: `http://localhost:9090` (scrapes `otel-collector:8889`)
+- Grafana: `http://localhost:3000` (no login; anonymous access enabled)
+- Tempo: `http://localhost:3200` (Tempo HTTP API; view traces in Grafana → Explore → Tempo)
+ - Loki: `http://localhost:3100` (Loki HTTP API; view logs in Grafana → Explore → Loki)
+ - Promtail: collects Docker container logs and ships to Loki (no host port)
 
 ## Endpoints (current)
 - GET `/health`: returns `{ "status": "ok" }`.

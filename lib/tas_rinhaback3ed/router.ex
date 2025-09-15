@@ -5,6 +5,7 @@ defmodule TasRinhaback3ed.Router do
   alias TasRinhaback3ed.Controllers.PaymentController
 
   plug(Plug.RequestId)
+  plug(TasRinhaback3ed.Plugs.TraceRequestId)
   plug(Plug.Logger)
   # Lightweight request timing events for telemetry
   plug(Plug.Telemetry, event_prefix: [:tas, :http])

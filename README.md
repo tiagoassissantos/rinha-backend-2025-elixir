@@ -61,6 +61,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
 - Prometheus: `http://localhost:9090` (scrapes OpenTelemetry Collector)
 - Grafana: `http://localhost:3000` (no login; anonymous access enabled)
  - Tempo: `http://localhost:3200` (Tempo HTTP API; view traces in Grafana → Explore → Tempo)
+ - Loki: `http://localhost:3100` (Loki HTTP API; view logs in Grafana → Explore → Loki)
 
 ## Configuration
 - Port (prod): `PORT` env var. Default: `9999`.
@@ -107,6 +108,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
 ## Observability (OpenTelemetry)
 - Traces: Application → OpenTelemetry (OTLP) → OpenTelemetry Collector → Grafana Tempo → Grafana (Tempo datasource)
 - Metrics: Application → OpenTelemetry (OTLP) → OpenTelemetry Collector (spanmetrics) → Prometheus → Grafana
+ - Logs: Docker containers (app1/app2/nginx) → Promtail → Loki → Grafana
 
 What’s wired
 - HTTP server: traces around requests (Plug.Telemetry → OTel spans)
@@ -120,10 +122,12 @@ How to use
 - Hit the app: `curl -i http://localhost:9999/health`
 - View traces in Grafana: `http://localhost:3000` (Explore → Tempo; search service `tas_rinhaback_3ed`)
 - View metrics in Grafana: `http://localhost:3000` (Explore → Prometheus; try `sum(rate(service_calls_total[1m])) by (http_method, http_route, http_status_code)`)
+ - View logs in Grafana: `http://localhost:3000` (Explore → Loki; example query `{compose_service="nginx"}` or `{compose_service="app1"}`)
 
 Notes
 - The app exports OTLP to `otel-collector:4317` (gRPC). Override with `OTEL_EXPORTER_OTLP_ENDPOINT` if needed.
 - Prometheus scrapes the collector at `otel-collector:8889` (not the app directly).
+ - Promtail reads Docker logs via `/var/lib/docker/containers` and the Docker socket; it automatically labels logs with Compose metadata like `compose_service` and `compose_project` for convenient filtering in Grafana Loki.
 
 Outbound tracing details
 - Default: `OpentelemetryReq` is attached with `propagate_trace_headers: true` in `lib/tas_rinhaback3ed/http.ex`.
