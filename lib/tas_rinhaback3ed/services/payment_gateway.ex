@@ -21,6 +21,7 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
         ctx = Tracer.current_span_ctx()
         Span.set_attribute(ctx, :request_id, rid)
       end
+
       # Use string keys for custom attributes; avoid :'ns.key' atoms to prevent :ns.key/0 parsing
       Span.set_attribute(Tracer.current_span_ctx(), "tas.route", "default")
 
@@ -28,29 +29,41 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
 
       url = mount_base_url(@default_base_url, opts)
       route = "default"
+
       case make_request(url, params, route) do
         {:ok, resp} ->
-          #Logger.info("Payment gateway response: #{inspect(resp)}")
+          # Logger.info("Payment gateway response: #{inspect(resp)}")
           if resp.status == 500 do
             new_route = "fallback"
 
-            Logger.error("#{route} gateway error #{resp.status}. Response body: #{inspect(resp.body)} Trying #{new_route}...")
-            Span.add_event(Tracer.current_span_ctx(), "gateway_error", %{status: resp.status, route: route})
+            Logger.error(
+              "#{route} gateway error #{resp.status}. Response body: #{inspect(resp.body)} Trying #{new_route}..."
+            )
+
+            Span.add_event(Tracer.current_span_ctx(), "gateway_error", %{
+              status: resp.status,
+              route: route
+            })
 
             new_url = mount_base_url(@fallback_base_url, opts)
             resp = make_request(new_url, params, new_route)
-            #Logger.info("Fallback response: #{inspect(resp)}")
+            # Logger.info("Fallback response: #{inspect(resp)}")
           else
-            #Logger.info("Payment request succeeded.")
+            # Logger.info("Payment request succeeded.")
             TasRinhaback3ed.Services.Transactions.store_success(params, route)
           end
+
           :ok
 
         {:error, error} ->
           new_route = "fallback"
 
           Logger.error("#{route} gateway error #{inspect(error)}. Trying #{new_route}...")
-          Span.add_event(Tracer.current_span_ctx(), "gateway_error", %{error: inspect(error), route: route})
+
+          Span.add_event(Tracer.current_span_ctx(), "gateway_error", %{
+            error: inspect(error),
+            route: route
+          })
 
           fallback_url = mount_base_url(@fallback_base_url, opts)
           make_request(fallback_url, params, new_route)
@@ -99,7 +112,6 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
         Span.add_event(Tracer.current_span_ctx(), "exit", %{reason: inspect(reason)})
         {:error, reason}
     end
-
   end
 
   defp mount_base_url(base_url, opts) do

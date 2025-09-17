@@ -95,8 +95,10 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 ## Docker & Compose
 - Dev (two instances + nginx LB on 9999):
   - `docker compose up`
+  - If you're not on `linux/amd64`, set `APP_PLATFORM` before building (e.g., `APP_PLATFORM=linux/arm64 docker compose build`) to avoid `exec format error`.
   - Visit `http://localhost:9999/health`
   - Backends listen on `app1:4001` and `app2:4002` (nginx upstream)
+  - Containers run as a non-root `app` user; ensure mounted paths are writable without root
   - Compose mounts host `${HOME}/.mix -> /root/.mix` so Hex is available offline
   - PostgreSQL available as `postgres:5432` (host mapped to `5432`), user `postgres`, password `postgres`, database `tasrinha_dev`.
   - OpenTelemetry Collector (OTLP): `otel-collector:4317` (gRPC), `4318` (HTTP)

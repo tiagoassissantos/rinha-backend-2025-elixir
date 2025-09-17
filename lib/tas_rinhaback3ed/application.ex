@@ -33,14 +33,14 @@ defmodule TasRinhaback3ed.Application do
     ]
 
     repo_children =
-      if Mix.env() == :test do
+      if current_env() == :test do
         []
       else
         [TasRinhaback3ed.Repo]
       end
 
     http_children =
-      if Mix.env() == :test do
+      if current_env() == :test do
         []
       else
         port =
@@ -66,11 +66,21 @@ defmodule TasRinhaback3ed.Application do
     Supervisor.start_link(children, opts)
   end
 
+  defp current_env do
+    if Code.ensure_loaded?(Mix) and function_exported?(Mix, :env, 0) do
+      Mix.env()
+    else
+      :prod
+    end
+  end
+
   defp finch_pools do
     cfg = Application.get_env(:tas_rinhaback_3ed, :http_client, [])
     size = Keyword.get(cfg, :pool_size, 50)
     count = Keyword.get(cfg, :pool_count, 1)
-    conn_opts = Keyword.get(cfg, :conn_opts, [transport_opts: [verify: :verify_peer], timeout: 1_000])
+
+    conn_opts =
+      Keyword.get(cfg, :conn_opts, transport_opts: [verify: :verify_peer], timeout: 1_000)
 
     default = [size: size, count: count, conn_opts: conn_opts]
 

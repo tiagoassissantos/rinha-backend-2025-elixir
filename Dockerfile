@@ -1,29 +1,52 @@
-FROM elixir:1.18-alpine
+#
+# Production Dockerfile for the Elixir application
+#
 
-# Set production environment
-ENV MIX_ENV=prod \
-    LANG=C.UTF-8
+# Stage 1: Builder
+# This stage compiles the code and builds the release.
+FROM elixir:1.18-alpine AS builder
+
+ENV MIX_ENV=prod
+
+# Install build tools
+RUN apk add --no-cache build-base git
 
 WORKDIR /app
 
-# Install build tools and git for deps
-RUN apk add --no-cache build-base git
+# Install Hex and Rebar
+RUN mix local.hex --force && mix local.rebar --force
 
-# Install Hex/Rebar and fetch deps
+# Copy dependency definitions
 COPY mix.exs mix.lock ./
-RUN mix local.hex --force \
- && mix local.rebar --force \
- && mix deps.get --only prod
 
-# Copy app source and compile
-COPY config ./config
-COPY lib ./lib
-RUN mix compile
+# Copy config files. This is important for releases.
+COPY config config
 
-# Expose the HTTP port (default 9999)
-EXPOSE 9999
-ENV PORT=9999
+# Install dependencies
+RUN mix deps.get --only prod
+RUN mix deps.compile
 
-# Start the app
-CMD ["mix", "run", "--no-halt"]
+# Copy source code
+COPY lib lib
+COPY priv priv
 
+# Build the release
+RUN mix release
+
+# Stage 2: Runner
+# This stage creates the final, small image to run the application.
+FROM alpine:latest AS runner
+
+RUN apk add --no-cache openssl ncurses-libs libstdc++ libgcc htop \
+  && addgroup -S app \
+  && adduser -S -G app app
+
+WORKDIR /app
+
+COPY --chown=app:app --from=builder /app/_build/prod/rel/tas_rinhaback_3ed .
+
+ENV HOME=/app
+
+USER app
+
+CMD ["bin/tas_rinhaback_3ed", "start"]

@@ -12,7 +12,7 @@ defmodule TasRinhaback3ed.HTTP do
 
     Req.new(finch: TasRinhaback3ed.Finch)
     # Inject x-request-id so OpentelemetryReq captures it as an attribute
-    |> Req.merge(headers: (if rid, do: [{"x-request-id", rid}], else: []))
+    |> Req.merge(headers: if(rid, do: [{"x-request-id", rid}], else: []))
     |> OpentelemetryReq.attach(
       propagate_trace_headers: true,
       # Record templated path as attribute so it’s searchable (TraceQL)

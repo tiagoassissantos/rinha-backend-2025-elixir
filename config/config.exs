@@ -5,14 +5,15 @@ import Config
 # Use Jason for JSON library in Plug and Phoenix (if later added)
 # config :plug, :json_library, Jason
 
-# Logger configuration
+# Logger configuration - optimized for performance (warning level, minimal metadata)
 config :logger, :console,
-  format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id]
+  level: :warning,
+  format: "$time [$level] $message\n",
+  metadata: []
 
 # Payment queue defaults
 config :tas_rinhaback_3ed, :payment_queue,
-  max_concurrency: System.schedulers_online() * 280,
+  max_concurrency: System.schedulers_online() * 2,
   max_queue_size: :infinity
 
 # Ecto repos

@@ -4,16 +4,17 @@ defmodule TasRinhaback3ed.Router do
   alias TasRinhaback3ed.{JSON, HealthController}
   alias TasRinhaback3ed.Controllers.PaymentController
 
-  plug(Plug.RequestId)
   plug(TasRinhaback3ed.Plugs.TraceRequestId)
-  plug(Plug.Logger)
+
   # Lightweight request timing events for telemetry
   plug(Plug.Telemetry, event_prefix: [:tas, :http])
 
   plug(Plug.Parsers,
-    parsers: [:json, :urlencoded, :multipart],
-    pass: ["*/*"],
-    json_decoder: Jason
+    parsers: [:json],
+    pass: ["application/json"],
+    json_decoder: Jason,
+    length: 8_192,
+    validate_utf8: false
   )
 
   plug(:match)
@@ -32,6 +33,8 @@ defmodule TasRinhaback3ed.Router do
   end
 
   match _ do
-    JSON.send_json(conn, 404, %{error: "not_found"})
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(404, Jason.encode_to_iodata!(%{error: "not_found"}))
   end
 end

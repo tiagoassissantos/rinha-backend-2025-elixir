@@ -21,6 +21,7 @@ defmodule TasRinhaback3ed.Plugs.TraceRequestId do
 
     if req_id do
       ctx = Tracer.current_span_ctx()
+
       if ctx != :undefined do
         # Record under a simple and a namespaced key for convenience
         Span.set_attribute(ctx, :request_id, req_id)

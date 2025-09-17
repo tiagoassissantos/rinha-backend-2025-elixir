@@ -1,8 +1,16 @@
 defmodule TasRinhaback3ed.HealthController do
   alias TasRinhaback3ed.JSON
+  alias TasRinhaback3ed.Services.PaymentQueue
 
   @spec index(Plug.Conn.t()) :: Plug.Conn.t()
   def index(conn) do
-    JSON.send_json(conn, 200, %{status: "ok"})
+    queue_stats = PaymentQueue.stats()
+
+    response = %{
+      status: "ok",
+      queue: queue_stats
+    }
+
+    JSON.send_json(conn, 200, response)
   end
 end
