@@ -29,7 +29,7 @@ if config_env() in [:dev, :prod] do
 
   pool_size =
     case System.get_env("DB_POOL_SIZE") do
-      nil -> System.schedulers_online() * 2
+      nil -> System.schedulers_online() * 4
       v -> String.to_integer(v)
     end
 
@@ -61,4 +61,21 @@ if config_env() in [:dev, :prod] do
           }}
      }}
   ]
+end
+
+# HTTP client (Finch) pool configuration
+if config_env() in [:dev, :prod] do
+  pool_size =
+    case System.get_env("HTTP_POOL_SIZE") do
+      nil -> 300
+      v -> String.to_integer(v)
+    end
+
+  pool_count =
+    case System.get_env("HTTP_POOL_COUNT") do
+      nil -> 1
+      v -> String.to_integer(v)
+    end
+
+  config :tas_rinhaback_3ed, :http_client, pool_size: pool_size, pool_count: pool_count
 end

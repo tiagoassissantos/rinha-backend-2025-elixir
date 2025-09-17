@@ -12,7 +12,7 @@ config :logger, :console,
 
 # Payment queue defaults
 config :tas_rinhaback_3ed, :payment_queue,
-  max_concurrency: System.schedulers_online() * 2,
+  max_concurrency: System.schedulers_online() * 280,
   max_queue_size: :infinity
 
 # Ecto repos

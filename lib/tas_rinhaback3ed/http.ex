@@ -8,7 +8,11 @@ defmodule TasRinhaback3ed.HTTP do
   """
 
   defp base_client do
-    Req.new()
+    rid = Logger.metadata()[:request_id]
+
+    Req.new(finch: TasRinhaback3ed.Finch)
+    # Inject x-request-id so OpentelemetryReq captures it as an attribute
+    |> Req.merge(headers: (if rid, do: [{"x-request-id", rid}], else: []))
     |> OpentelemetryReq.attach(
       propagate_trace_headers: true,
       # Record templated path as attribute so it’s searchable (TraceQL)
@@ -17,7 +21,6 @@ defmodule TasRinhaback3ed.HTTP do
       request_header_attrs: ["x-request-id", "x-correlation-id"],
       response_header_attrs: ["x-request-id", "x-correlation-id"]
     )
-    |> Req.merge(connect_options: [transport_opts: [verify: :verify_peer]])
   end
 
   @spec request(Req.Request.t() | keyword()) :: {:ok, Req.Response.t()} | {:error, term()}

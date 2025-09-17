@@ -3,6 +3,7 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
   Documentation for TasRinhaback3ed.Controllers.PaymentController.
   """
 
+  require Logger
   alias TasRinhaback3ed.JSON
   alias TasRinhaback3ed.Services.PaymentQueue
   alias TasRinhaback3ed.Services.Transactions
@@ -11,16 +12,9 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
   def payments(conn, params) do
     # case validate_params(params) do
     #  {:ok, _normalized} ->
-    case PaymentQueue.enqueue(params) do
-      {:ok, :queued} ->
-        response = %{status: "ok"}
-
-        JSON.send_json(conn, 202, response)
-
-      {:error, :queue_full} ->
-        JSON.send_json(conn, 503, %{error: "queue_full"})
-    end
-
+    # Fire-and-forget enqueue (async). Always respond 202; queue will drop on overflow.
+    _ = PaymentQueue.enqueue(params)
+    JSON.send_json(conn, 202, %{status: "ok"})
     #  {:error, errors} ->
     #    JSON.send_json(conn, 400, %{error: "invalid_request", errors: errors})
     # end

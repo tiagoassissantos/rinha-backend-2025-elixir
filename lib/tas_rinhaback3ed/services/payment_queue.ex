@@ -30,13 +30,13 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   @doc """
   Enqueue a payment payload for asynchronous processing.
   """
-  @spec enqueue(payload()) :: enqueue_result()
+  @spec enqueue(payload()) :: :ok
   def enqueue(payload) when is_map(payload) do
     # Capture caller's Logger metadata (includes request_id set by Plug.RequestId)
     caller_md = Logger.metadata()
-    # Capture current OpenTelemetry context so worker spans join the HTTP trace
-    otel_ctx = OpenTelemetry.Ctx.get_current()
-    GenServer.call(__MODULE__, {:enqueue, payload, caller_md, otel_ctx})
+    # Capture the current OpenTelemetry context to keep traces linked across processes
+    span_ctx = OpenTelemetry.Ctx.get_current()
+    GenServer.cast(__MODULE__, {:enqueue, payload, caller_md, span_ctx})
   end
 
   # Server callbacks
@@ -67,26 +67,27 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   end
 
   @impl true
-  def handle_call({:enqueue, payload, caller_md, otel_ctx}, _from, state) do
+  def handle_cast({:enqueue, payload, caller_md, span_ctx}, state) do
     cond do
       state.max_queue_size != :infinity and state.queued_count >= state.max_queue_size ->
+        #Logger.warning("PaymentQueue drop: queue_full length=#{state.queued_count}")
         :telemetry.execute([:tas, :queue, :drop], %{queue_len: state.queued_count}, %{})
         emit_state(state)
-        {:reply, {:error, :queue_full}, state}
+        {:noreply, state}
 
       true ->
         entry = %{
           payload: payload,
           enq_mono: System.monotonic_time(),
           logger_md: caller_md,
-          otel_ctx: otel_ctx
+          span_ctx: span_ctx
         }
         q = :queue.in(entry, state.queue)
         state = %{state | queue: q, queued_count: state.queued_count + 1}
         :telemetry.execute([:tas, :queue, :enqueue], %{queue_len: state.queued_count}, %{})
         state = dispatch(state)
         emit_state(state)
-        {:reply, {:ok, :queued}, state}
+        {:noreply, state}
     end
   end
 
@@ -105,7 +106,7 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
     end
 
     state = dispatch(state)
-    emit_state(state)
+    #emit_state(state)
     {:noreply, state}
   end
 
@@ -119,6 +120,7 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
       state = dispatch(state)
       {:noreply, state}
     else
+      #Logger.info(inspect(state))
       {:noreply, state}
     end
   end
@@ -136,7 +138,7 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
 
   defp do_dispatch(state) do
     case :queue.out(state.queue) do
-      {{:value, %{payload: payload, enq_mono: t0, logger_md: logger_md, otel_ctx: otel_ctx}}, q1} ->
+      {{:value, %{payload: payload, enq_mono: t0, logger_md: logger_md, span_ctx: span_ctx}}, q1} ->
         now = System.monotonic_time()
         wait_ms = System.convert_time_unit(now - t0, :native, :millisecond)
         :telemetry.execute([:tas, :queue, :wait_time], %{wait_ms: wait_ms}, %{})
@@ -147,12 +149,14 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
             if is_list(logger_md) and logger_md != [] do
               Logger.metadata(logger_md)
             end
-            # Attach parent OpenTelemetry context so spans join the HTTP request trace
-            token = if otel_ctx, do: OpenTelemetry.Ctx.attach(otel_ctx), else: nil
+            # Attach the originating request's OpenTelemetry context (per-entry)
+            token = if span_ctx, do: OpenTelemetry.Ctx.attach(span_ctx), else: nil
             :telemetry.span([:tas, :queue, :job], %{wait_ms: wait_ms}, fn ->
               try do
                 result = PaymentGateway.send_payment(payload)
+                #Logger.info("Payment processed: #{inspect(result)}")
                 meta = %{result: if(match?({:error, _}, result), do: :error, else: :ok)}
+                #Logger.info(inspect(meta))
                 {result, meta}
               after
                 if token, do: OpenTelemetry.Ctx.detach(token)
@@ -169,6 +173,8 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
             in_flight: state.in_flight + 1,
             tasks: tasks
         }
+
+        #Logger.debug("Payment task state: #{inspect(state)}")
 
         emit_state(state)
         do_dispatch(state)

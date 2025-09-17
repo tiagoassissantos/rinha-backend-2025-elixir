@@ -45,6 +45,7 @@ defmodule TasRinhaback3ed.MixProject do
       {:opentelemetry_api, "~> 1.4"},
       {:opentelemetry_exporter, "~> 1.8"},
       {:opentelemetry_semantic_conventions, "~> 1.27"},
+      {:opentelemetry_process_propagator, "~> 0.3"},
 
       # Server-side HTTP (Bandit) tracing
       {:opentelemetry_bandit, "~> 0.3"},
