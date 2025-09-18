@@ -31,6 +31,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
 - GET `/health`: returns `{ "status": "ok", "queue": {"queue_size": N, "in_flight": M} }` with queue statistics.
 - POST `/payments`: **OPTIMIZED** - accepts any payload and immediately enqueues for asynchronous forwarding. Returns 204 (No Content) for maximum performance (~50μs response time). Returns 503 `{ "error": "queue_full" }` only if queue is at capacity.
 - GET `/payments-summary`: requires `from` and `to` ISO8601 query params and returns an aggregated summary from the DB when available; otherwise falls back to a stub payload. Responds 400 with `{ error: "invalid_request", errors: [...] }` if params are missing/invalid.
+- GET `/metrics`: Prometheus exposition format served by PromEx (text/plain). Available when the PromEx supervisor is running.
 
 ## External Gateways
 - Primary base URL: `http://localhost:8001`
@@ -46,13 +47,8 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
 - **Scalability**: No GenServer bottleneck - unlimited concurrent writers
 - Purpose: decouple client request latency from payment forwarding. Workers drain ETS table concurrently via `PaymentGateway`.
 - Concurrency: configurable via `:tas_rinhaback_3ed, :payment_queue, :max_concurrency` (default: `System.schedulers_online()*2`).
-- Back-pressure: atomic counters track `:max_queue_size` (default: `:infinity`). When full, controller returns `503 {"error":"queue_full"}`.
+- Back-pressure: atomic counters track `:max_queue_size` (default: `50_000`, overridable via `PAYMENT_QUEUE_MAX_SIZE`; set to `infinity` to disable). When full, controller returns `503 {"error":"queue_full"}`.
 - Supervision: started via `TasRinhaback3ed.Application` with a named `Task.Supervisor` (`TasRinhaback3ed.PaymentTaskSup`).
-- Telemetry: emits events for queue monitoring
-   - `[:tas, :queue, :enqueue]` (counter)
-   - `[:tas, :queue, :drop]` (counter)
-   - `[:tas, :queue, :wait_time]` (histogram)
-   - `[:tas, :queue, :state]` (gauges for queue_size and in_flight)
 
 ## Performance Optimizations 🏎️
 
@@ -89,17 +85,8 @@ Concurrency limit      | ~10K req  | Unlimited | ∞
 ### Monitoring
 - Queue stats: `PaymentQueue.stats()` → `%{queue_size: N, in_flight: M}`
 - Health endpoint: `GET /health` includes real-time queue statistics
-- Telemetry events: High-frequency, minimal overhead metrics
+- PromEx metrics: `GET /metrics` exports BEAM/application/router/Ecto telemetry for scraping
 - ETS introspection: `:ets.info(:payment_work_queue)` for debugging
-
-### Testing
-- Syntax validation: `elixir validate_syntax.exs`  
-- ETS queue tests: `elixir test_ets_queue.exs`
-- HTTP performance: `elixir test_optimized.exs`
-- Load testing: See `PERFORMANCE_BREAKTHROUGH.md` for detailed benchmarks
-   - `[:tas, :queue, :state]` (gauges `queue.length`, `queue.in_flight`)
-   - `[:tas, :queue, :wait_time]` (histogram in ms)
-   - `[:tas, :queue, :job, :start|:stop|:exception]` (span for job duration)
 
 ## Run Locally
 - Install deps: `mix deps.get`
@@ -107,14 +94,11 @@ Concurrency limit      | ~10K req  | Unlimited | ∞
 - Change port: `PORT=4001 mix run --no-halt`
 - Interactive shell: `iex -S mix run --no-halt`
 - Health check: `curl -i http://localhost:9999/health`
-- Prometheus: `http://localhost:9090` (scrapes OpenTelemetry Collector)
-- Grafana: `http://localhost:3000` (no login; anonymous access enabled)
- - Tempo: `http://localhost:3200` (Tempo HTTP API; view traces in Grafana → Explore → Tempo)
- - Loki: `http://localhost:3100` (Loki HTTP API; view logs in Grafana → Explore → Loki)
 
 ## Configuration
 - Port (prod): `PORT` env var. Default: `9999`.
 - Gateway base URL: `:tas_rinhaback_3ed, :payments_base_url`.
+- Payment queue size: `PAYMENT_QUEUE_MAX_SIZE` (positive integer or `infinity`, defaults to `50_000`).
 - Logger: console with request_id metadata.
 - Database (Ecto/PostgreSQL): configure via `DATABASE_URL` or `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`. Optional: `DB_POOL_SIZE`, `DB_SSL`.
   - Repo: `TasRinhaback3ed.Repo` (PostgreSQL)
@@ -142,10 +126,6 @@ Concurrency limit      | ~10K req  | Unlimited | ∞
   - Set `APP_PLATFORM` before building if your Docker host architecture is not `linux/amd64` (e.g., `export APP_PLATFORM=linux/arm64` on Apple Silicon) to avoid `exec format error`
   - Compose mounts host `${HOME}/.mix -> /root/.mix` so Hex is available offline
   - PostgreSQL available as `postgres:5432` (host mapped to `5432`), user `postgres`, password `postgres`, database `tasrinha_dev`.
-  - OpenTelemetry Collector (OTLP): `otel-collector:4317` (gRPC), `4318` (HTTP)
-  - Prometheus available at `http://localhost:9090` (scrapes `otel-collector:8889`)
-  - Grafana available at `http://localhost:3000` (anonymous access; Prometheus + Tempo datasources provisioned)
-  - Tempo HTTP API available at `http://localhost:3200` (use Grafana Explore → Tempo to browse traces)
 
 ### Dev Workflow (making code changes)
 - Restart apps to pick up changes:
@@ -154,34 +134,6 @@ Concurrency limit      | ~10K req  | Unlimited | ∞
   - `docker compose logs -f app1 app2 nginx`
   - Tear down the stack:
   - `docker compose down` (add `--volumes` to clean deps/build caches if you mounted them)
-
-## Observability (OpenTelemetry)
-- Traces: Application → OpenTelemetry (OTLP) → OpenTelemetry Collector → Grafana Tempo → Grafana (Tempo datasource)
-- Metrics: Application → OpenTelemetry (OTLP) → OpenTelemetry Collector (spanmetrics) → Prometheus → Grafana
- - Logs: Docker containers (app1/app2/nginx) → Promtail → Loki → Grafana
-
-What’s wired
-- HTTP server: traces around requests (Plug.Telemetry → OTel spans)
-- Ecto: DB query spans
-- Outbound HTTP: Req/Finch client spans
-- Trace propagation: outbound HTTP includes W3C `traceparent`/`baggage` headers by default
-- Metrics: latency/throughput emitted by collector spanmetrics connector, scraped by Prometheus
-
-How to use
-- Bring up stack: `docker compose up -d`
-- Hit the app: `curl -i http://localhost:9999/health`
-- View traces in Grafana: `http://localhost:3000` (Explore → Tempo; search service `tas_rinhaback_3ed`)
-- View metrics in Grafana: `http://localhost:3000` (Explore → Prometheus; try `sum(rate(service_calls_total[1m])) by (http_method, http_route, http_status_code)`)
- - View logs in Grafana: `http://localhost:3000` (Explore → Loki; example query `{compose_service="nginx"}` or `{compose_service="app1"}`)
-
-Notes
-- The app exports OTLP to `otel-collector:4317` (gRPC). Override with `OTEL_EXPORTER_OTLP_ENDPOINT` if needed.
-- Prometheus scrapes the collector at `otel-collector:8889` (not the app directly).
- - Promtail reads Docker logs via `/var/lib/docker/containers` and the Docker socket; it automatically labels logs with Compose metadata like `compose_service` and `compose_project` for convenient filtering in Grafana Loki.
-
-Outbound tracing details
-- Default: `OpentelemetryReq` is attached with `propagate_trace_headers: true` in `lib/tas_rinhaback3ed/http.ex`.
-- Per‑call override: pass `propagate_trace_headers: false` in a specific `TasRinhaback3ed.HTTP.request/1` call if you need to suppress header injection.
 
 Notes
 - Nginx maps host `9999 -> nginx:80`, and proxies to `app1:4001` and `app2:4002`.

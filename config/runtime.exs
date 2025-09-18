@@ -29,7 +29,7 @@ if config_env() in [:dev, :prod] do
 
   pool_size =
     case System.get_env("DB_POOL_SIZE") do
-      nil -> System.schedulers_online() * 4
+      nil -> System.schedulers_online() * 1
       v -> String.to_integer(v)
     end
 
@@ -40,34 +40,11 @@ if config_env() in [:dev, :prod] do
          Keyword.merge(repo_config, pool_size: pool_size, ssl: ssl, log: false)
 end
 
-# OpenTelemetry exporter/runtime configuration (dev + prod)
-if config_env() in [:dev, :prod] do
-  collector_host = System.get_env("OTEL_COLLECTOR_HOST", "otel-collector")
-  collector_grpc_port = String.to_integer(System.get_env("OTEL_COLLECTOR_GRPC_PORT", "4317"))
-  service_name = System.get_env("OTEL_SERVICE_NAME", "tas_rinhaback_3ed")
-
-  config :opentelemetry, :resource, service: [name: service_name]
-
-  # Export traces/metrics via OTLP gRPC to the Collector
-  config :opentelemetry, :processors, [
-    {:otel_batch_processor,
-     %{
-       exporter:
-         {:opentelemetry_exporter,
-          %{
-            endpoints: [
-              {:grpc, String.to_charlist(collector_host), collector_grpc_port, []}
-            ]
-          }}
-     }}
-  ]
-end
-
 # HTTP client (Finch) pool configuration
 if config_env() in [:dev, :prod] do
   pool_size =
     case System.get_env("HTTP_POOL_SIZE") do
-      nil -> 300
+      nil -> 30
       v -> String.to_integer(v)
     end
 
@@ -78,4 +55,34 @@ if config_env() in [:dev, :prod] do
     end
 
   config :tas_rinhaback_3ed, :http_client, pool_size: pool_size, pool_count: pool_count
+end
+
+if config_env() in [:dev, :prod] do
+  queue_env_value = System.get_env("PAYMENT_QUEUE_MAX_SIZE")
+
+  if queue_env_value && queue_env_value != "" do
+    normalized = String.downcase(queue_env_value)
+
+    queue_max_size =
+      case normalized do
+        "infinity" ->
+          :infinity
+
+        value ->
+          case Integer.parse(value) do
+            {int, ""} when int >= 0 ->
+              int
+
+            _ ->
+              raise ArgumentError,
+                    "PAYMENT_QUEUE_MAX_SIZE must be a positive integer or \"infinity\""
+          end
+      end
+
+    queue_config = Application.get_env(:tas_rinhaback_3ed, :payment_queue, [])
+
+    config :tas_rinhaback_3ed,
+           :payment_queue,
+           Keyword.put(queue_config, :max_queue_size, queue_max_size)
+  end
 end

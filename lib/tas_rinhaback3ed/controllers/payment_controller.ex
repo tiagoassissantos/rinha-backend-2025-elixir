@@ -6,7 +6,6 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
   require Logger
   alias TasRinhaback3ed.Services.PaymentQueue
   alias TasRinhaback3ed.Services.Transactions
-  alias Decimal, as: D
 
   # Prebuild static responses to avoid allocations
   @empty_response_204 ""

@@ -1,4 +1,4 @@
-defmodule TasRinhaback3ed.HealthController do
+defmodule TasRinhaback3ed.Controllers.HealthController do
   alias TasRinhaback3ed.JSON
   alias TasRinhaback3ed.Services.PaymentQueue
 

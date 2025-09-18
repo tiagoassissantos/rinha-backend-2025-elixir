@@ -7,22 +7,6 @@ defmodule TasRinhaback3ed.Application do
 
   @impl true
   def start(_type, _args) do
-    # OpenTelemetry exporter is configured via config/runtime.exs
-
-    # ---- Bandit/Plug server spans ----
-    OpentelemetryBandit.setup()
-
-    # ---- Ecto spans ----
-    # Telemetry prefix for this app's Repo (derived from module name)
-    OpentelemetryEcto.setup([:tas_rinhaback3ed, :repo])
-
-    # Observability components (Prometheus exporter and periodic VM metrics)
-    opentel_children = [
-      {TelemetryMetricsPrometheus, metrics: TasRinhaback3ed.Metrics.definitions()},
-      # telemetry_poller expects the evaluated list, not a function capture
-      {:telemetry_poller, measurements: TasRinhaback3ed.Metrics.vm_measurements(), period: 5_000}
-    ]
-
     http_client_children = [
       {Finch, name: TasRinhaback3ed.Finch, pools: finch_pools()}
     ]
@@ -57,8 +41,15 @@ defmodule TasRinhaback3ed.Application do
         ]
       end
 
+    prom_ex_children =
+      if current_env() == :test do
+        []
+      else
+        [TasRinhaback3ed.PromEx]
+      end
+
     children =
-      repo_children ++ http_client_children ++ queue_children ++ http_children ++ opentel_children
+      repo_children ++ prom_ex_children ++ http_client_children ++ queue_children ++ http_children
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -76,7 +67,7 @@ defmodule TasRinhaback3ed.Application do
 
   defp finch_pools do
     cfg = Application.get_env(:tas_rinhaback_3ed, :http_client, [])
-    size = Keyword.get(cfg, :pool_size, 50)
+    size = Keyword.get(cfg, :pool_size, 10)
     count = Keyword.get(cfg, :pool_count, 1)
 
     conn_opts =

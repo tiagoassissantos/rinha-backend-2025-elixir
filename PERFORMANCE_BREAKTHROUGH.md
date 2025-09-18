@@ -41,7 +41,7 @@ end
 # AFTER: Direct ETS writes (lock-free)
 def enqueue(payload) do
   key = {System.monotonic_time(), make_ref()}
-  entry = {payload, System.monotonic_time(), span_ctx}
+  entry = {payload, System.monotonic_time()}
   :ets.insert(@table_name, {key, entry})          # Direct write, no process
   :atomics.add(@queue_size_counter, 1, 1)         # Atomic increment
   :ok
@@ -255,27 +255,11 @@ stats = PaymentQueue.stats()
 }
 ```
 
-## Monitoring & Observability
+## Runtime Visibility
 
-### Telemetry Events
-```elixir
-# High-frequency events (minimal overhead)
-[:tas, :queue, :enqueue]     # Counter: items added
-[:tas, :queue, :drop]        # Counter: items dropped (back-pressure)
-[:tas, :queue, :wait_time]   # Histogram: time in queue
-[:tas, :queue, :state]       # Gauge: current queue size + in-flight
-[:tas, :queue, :job, :*]     # Span: individual job processing
-```
-
-### Prometheus Metrics
-```prometheus
-# Auto-generated from telemetry
-tas_queue_enqueue_total{result="ok"}
-tas_queue_drop_total{reason="queue_full"}  
-tas_queue_wait_time_duration_seconds_bucket
-tas_queue_size_current
-tas_queue_in_flight_current
-```
+### Queue Metrics
+- `PaymentQueue.stats/0` returns `%{queue_size: N, in_flight: M}` with zero GenServer overhead.
+- `/health` endpoint surfaces the same data for external monitoring.
 
 ### ETS Introspection
 ```elixir
@@ -323,7 +307,7 @@ end
 ### Phase 2: Load Test & Validate
 ```bash
 # Gradually increase traffic to ETS queue
-# Monitor performance metrics
+# Monitor queue size and worker count via PaymentQueue.stats/0
 # Compare error rates and latencies
 ```
 
@@ -331,7 +315,7 @@ end
 ```bash
 # Route 100% traffic to ETS queue
 # Remove GenServer queue code
-# Cleanup old telemetry events
+# Cleanup legacy instrumentation
 ```
 
 ## Future Optimizations

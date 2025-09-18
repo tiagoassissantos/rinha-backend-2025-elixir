@@ -7,14 +7,6 @@ defmodule TasRinhaback3ed.MixProject do
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      releases: [
-        tas_rinhaback_3ed: [
-          applications: [
-            opentelemetry_exporter: :temporary,
-            opentelemetry: :temporary
-          ]
-        ]
-      ],
       deps: deps()
     ]
   end
@@ -22,8 +14,7 @@ defmodule TasRinhaback3ed.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      # Ensure TLS certificate store app is started before OTLP exporter init
-      extra_applications: [:logger, :tls_certificate_check, :opentelemetry_exporter],
+      extra_applications: [:logger],
       mod: {TasRinhaback3ed.Application, []}
     ]
   end
@@ -38,29 +29,11 @@ defmodule TasRinhaback3ed.MixProject do
       {:req, "~> 0.5.0"},
       {:ecto_sql, "~> 3.11"},
       {:postgrex, ">= 0.0.0"},
+      {:observer_cli, "~> 1.8", only: :dev},
+      {:recon, "~> 2.5", only: :dev},
       {:bypass, "~> 2.1", only: :test},
-
-      # OpenTelemetry core & exporter (OTLP)
-      {:opentelemetry, "~> 1.5"},
-      {:opentelemetry_api, "~> 1.4"},
-      {:opentelemetry_exporter, "~> 1.8"},
-      {:opentelemetry_semantic_conventions, "~> 1.27"},
-      {:opentelemetry_process_propagator, "~> 0.3"},
-
-      # Server-side HTTP (Bandit) tracing
-      {:opentelemetry_bandit, "~> 0.3"},
-
-      # DB tracing
-      {:opentelemetry_ecto, "~> 1.2"},
-
-      # Outbound HTTP (Req) tracing
-      {:opentelemetry_req, "~> 1.0"},
-
-      # Telemetry → Prometheus reporter + built-in /metrics server
-      {:telemetry_metrics_prometheus, "~> 1.1"},
-
-      # Periodic VM/process measurements
-      {:telemetry_poller, "~> 1.3"}
+      {:prom_ex, "~> 1.11"},
+      {:telemetry_metrics_prometheus, "~> 1.0"}
     ]
   end
 end

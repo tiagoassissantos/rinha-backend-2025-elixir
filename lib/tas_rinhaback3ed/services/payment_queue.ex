@@ -10,7 +10,7 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   Architecture:
   - ETS table: :ordered_set for FIFO processing
   - Key: {monotonic_time, unique_ref} for ordering
-  - Value: {payload, enqueue_time, span_ctx}
+  - Value: {payload, enqueue_time}
   - Atomic counters: queue_size, in_flight workers
 
   Config:
@@ -59,7 +59,6 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
         current_size = :atomics.get(:persistent_term.get(@queue_size_counter), 1)
 
         if current_size >= max_queue_size do
-          :telemetry.execute([:tas, :queue, :drop], %{queue_len: current_size}, %{})
           {:error, :queue_full}
         else
           do_enqueue(payload)
@@ -74,19 +73,12 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
     # Generate ordered key for FIFO processing
     key = {System.monotonic_time(), make_ref()}
 
-    # Capture OpenTelemetry context for tracing
-    span_ctx = OpenTelemetry.Ctx.get_current()
-
     # Direct ETS write (lock-free)
-    entry = {payload, System.monotonic_time(), span_ctx}
+    entry = {payload, System.monotonic_time()}
     :ets.insert(@table_name, {key, entry})
 
     # Update atomic counter
     :atomics.add(:persistent_term.get(@queue_size_counter), 1, 1)
-
-    # Emit telemetry
-    new_size = :atomics.get(:persistent_term.get(@queue_size_counter), 1)
-    :telemetry.execute([:tas, :queue, :enqueue], %{queue_len: new_size}, %{})
 
     :ok
   end
@@ -140,13 +132,7 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
     }
 
     # Start initial worker pool
-    {:ok, start_workers(state), {:continue, :emit_initial_state}}
-  end
-
-  @impl true
-  def handle_continue(:emit_initial_state, state) do
-    emit_state()
-    {:noreply, state}
+    {:ok, start_workers(state)}
   end
 
   @impl true
@@ -168,7 +154,6 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
     state = %{state | worker_tasks: worker_tasks}
     state = start_workers(state)
 
-    emit_state()
     {:noreply, state}
   end
 
@@ -184,7 +169,6 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
       state = %{state | worker_tasks: worker_tasks}
       state = start_workers(state)
 
-      emit_state()
       {:noreply, state}
     else
       {:noreply, state}
@@ -225,32 +209,40 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   # Worker main loop - drain ETS queue
   defp worker_loop do
     case take_next_work() do
-      {:ok, payload, _enqueue_time, span_ctx, wait_ms} ->
-        # Process the payment
-        token = if span_ctx, do: OpenTelemetry.Ctx.attach(span_ctx), else: nil
-
-        :telemetry.span([:tas, :queue, :job], %{wait_ms: wait_ms}, fn ->
+      {:ok, payload, wait_ms} ->
+        result =
           try do
-            result = PaymentGateway.send_payment(payload)
-            meta = %{result: if(match?({:error, _}, result), do: :error, else: :ok)}
-            {result, meta}
-          after
-            if token, do: OpenTelemetry.Ctx.detach(token)
+            PaymentGateway.send_payment(payload)
+          rescue
+            error ->
+              Logger.error("Payment worker exception: #{inspect(error)}")
+              {:error, error}
+          catch
+            :exit, reason ->
+              Logger.error("Payment worker exit: #{inspect(reason)}")
+              {:error, reason}
           end
-        end)
 
-        # Continue processing
+        case result do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning("Payment processed with error after #{wait_ms}ms: #{inspect(reason)}")
+
+          other ->
+            Logger.debug("Payment gateway returned unexpected value: #{inspect(other)}")
+        end
+
         worker_loop()
 
       :empty ->
-        # No work available, sleep briefly then retry
         Process.sleep(1)
         worker_loop()
     end
   rescue
     error ->
       Logger.error("Worker loop error: #{inspect(error)}")
-      # Continue despite errors
       worker_loop()
   end
 
@@ -262,34 +254,18 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
 
       key ->
         case :ets.take(@table_name, key) do
-          [{^key, {payload, enqueue_time, span_ctx}}] ->
-            # Successfully took work item
+          [{^key, {payload, enqueue_time}}] ->
             :atomics.sub(:persistent_term.get(@queue_size_counter), 1, 1)
 
-            # Calculate wait time
             now = System.monotonic_time()
             wait_ms = System.convert_time_unit(now - enqueue_time, :native, :millisecond)
-            :telemetry.execute([:tas, :queue, :wait_time], %{wait_ms: wait_ms}, %{})
 
-            {:ok, payload, enqueue_time, span_ctx, wait_ms}
+            {:ok, payload, wait_ms}
 
           [] ->
-            # Someone else took it, try again
             take_next_work()
         end
     end
-  end
-
-  # Emit queue state telemetry
-  defp emit_state do
-    queue_size = :atomics.get(:persistent_term.get(@queue_size_counter), 1)
-    in_flight = :atomics.get(:persistent_term.get(@in_flight_counter), 1)
-
-    :telemetry.execute(
-      [:tas, :queue, :state],
-      %{queue_len: max(0, queue_size), in_flight: max(0, in_flight)},
-      %{}
-    )
   end
 
   @impl true

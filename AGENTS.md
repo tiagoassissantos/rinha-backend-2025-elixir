@@ -32,12 +32,6 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Change port: `PORT=4001 mix run --no-halt`
 - Interactive shell: `iex -S mix run --no-halt`
 - Health check: `curl -i http://localhost:9999/health`
-- OpenTelemetry Collector: `otel-collector:4317` (gRPC), `4318` (HTTP)
-- Prometheus: `http://localhost:9090` (scrapes `otel-collector:8889`)
-- Grafana: `http://localhost:3000` (no login; anonymous access enabled)
-- Tempo: `http://localhost:3200` (Tempo HTTP API; view traces in Grafana → Explore → Tempo)
- - Loki: `http://localhost:3100` (Loki HTTP API; view logs in Grafana → Explore → Loki)
- - Promtail: collects Docker container logs and ships to Loki (no host port)
 
 ## Endpoints (current)
 - GET `/health`: returns `{ "status": "ok" }`.
@@ -50,20 +44,13 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Effective URL is `<base>/payments` (service appends `/payments`).
 - Config override: `Application.get_env(:tas_rinhaback_3ed, :payments_base_url, ...)` or pass `base_url:` option to `PaymentGateway.send_payment/2` in tests.
 - Fallback behavior: only on pool pressure timeouts (`:pool_timeout`). Other errors bubble up.
-- Tracing: outbound requests propagate W3C `traceparent`/`baggage` headers by default via `OpentelemetryReq`. You can disable on a specific call by passing `propagate_trace_headers: false` to `TasRinhaback3ed.HTTP.request/1`.
 
 ## Async Queue (PaymentQueue)
 - Module: `lib/tas_rinhaback3ed/services/payment_queue.ex`
 - Purpose: decouple client request latency from payment forwarding. Bounded concurrency workers drain an in-memory `:queue` and send via `PaymentGateway`.
 - Concurrency: configurable via `:tas_rinhaback_3ed, :payment_queue, :max_concurrency` (default: `System.schedulers_online()*2`).
-- Back-pressure: optional `:max_queue_size` (default: `:infinity`). When full, controller returns `503 {"error":"queue_full"}`.
+- Back-pressure: optional `:max_queue_size` (default: `50_000`, override with `PAYMENT_QUEUE_MAX_SIZE`; use `infinity` to disable). When full, controller returns `503 {"error":"queue_full"}`.
 - Supervision: started via `TasRinhaback3ed.Application` with a named `Task.Supervisor` (`TasRinhaback3ed.PaymentTaskSup`).
- - Telemetry: emits events for queue monitoring
-   - `[:tas, :queue, :enqueue]` (counter)
-   - `[:tas, :queue, :drop]` (counter)
-   - `[:tas, :queue, :state]` (gauges `queue.length`, `queue.in_flight`)
-   - `[:tas, :queue, :wait_time]` (histogram in ms)
-   - `[:tas, :queue, :job, :start|:stop|:exception]` (span for job duration)
 
 ## Configuration
 - Port (prod): `PORT` env var. Default: `9999`.
@@ -78,7 +65,6 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Use `TasRinhaback3ed.JSON.send_json/3` for consistent responses.
 - Avoid starting the HTTP server inside code generators or tests.
  - For async flows, enqueue work in `PaymentQueue` and keep controllers fast (respond 202 on acceptance).
- - Metrics: keep tags low-cardinality (avoid per-ID tags); prefer histograms with coarse buckets.
 
 ## Tests
 - Run all: `mix test`
@@ -101,10 +87,6 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
   - Containers run as a non-root `app` user; ensure mounted paths are writable without root
   - Compose mounts host `${HOME}/.mix -> /root/.mix` so Hex is available offline
   - PostgreSQL available as `postgres:5432` (host mapped to `5432`), user `postgres`, password `postgres`, database `tasrinha_dev`.
-  - OpenTelemetry Collector (OTLP): `otel-collector:4317` (gRPC), `4318` (HTTP)
-  - Prometheus available at `http://localhost:9090` (scrapes `otel-collector:8889`)
-  - Grafana available at `http://localhost:3000` (anonymous access; Prometheus + Tempo datasource provisioned)
-  - Tempo HTTP API available at `http://localhost:3200` (use Grafana Explore → Tempo to browse traces)
 
 ### Dev Workflow (making code changes)
 - Restart apps to pick up changes:
@@ -199,17 +181,12 @@ This section is for automation agents (e.g., Codex CLI) contributing to this rep
 - Generate module: `mix gen.module TasRinhaback3ed.Domain.Example`
  - Create DB: `mix ecto.create`
  - Migrate DB: `mix ecto.migrate`
-- View metrics locally: `curl -s http://localhost:9999/metrics | head`
-- View metrics locally: `curl -s http://localhost:8889/metrics | head` (collector)
-- Run Prometheus: `docker run --rm -p 9090:9090 -v $(pwd)/infra/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus`
-- Run Grafana: `docker run --rm -p 3000:3000 grafana/grafana` (add Prometheus datasource http://host.docker.internal:9090 and import `infra/grafana-dashboard.json`). To mirror compose’s no‑auth setup, add envs: `-e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Admin -e GF_AUTH_DISABLE_LOGIN_FORM=true`.
 
 ## Definition of Done
 - Compiles with no warnings relevant to the change.
 - All tests pass locally (`mix test`).
 - New code is formatted and documented.
 - Public contracts (routes, payloads) updated in README or this file if changed.
- - Observability updated when endpoints/flows change (metrics/events/docs).
 
 ## Guardrails
 - Don’t change unrelated modules or global behaviors.

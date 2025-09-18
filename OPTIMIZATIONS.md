@@ -246,7 +246,7 @@ With these optimizations, the `/payments` endpoint should achieve:
 ### Functionality Removed
 1. **Input validation** - Moved to async workers or eliminated
 2. **Request logging** - Only warnings/errors logged
-3. **Request IDs** - Only OpenTelemetry trace context maintained  
+3. **Request IDs** - Removed entirely to minimize overhead  
 4. **Detailed error responses** - Generic error messages only
 5. **GenServer queue management** - Replaced with lock-free ETS
 6. **Process metadata tracking** - Atomic counters only
@@ -254,13 +254,12 @@ With these optimizations, the `/payments` endpoint should achieve:
 ### Monitoring Impact
 - Less detailed logs for debugging
 - No per-request metrics by default
-- Trace correlation via OpenTelemetry only
 - Queue statistics available via `/health` endpoint and `PaymentQueue.stats/0`
-- Telemetry events: `[:tas, :queue, :enqueue]`, `[:tas, :queue, :drop]`, `[:tas, :queue, :wait_time]`, `[:tas, :queue, :state]`
+- ETS insights require manual inspection (`:ets.info/1`)
 
 ### Development Experience  
 - Less feedback on malformed requests
-- Debugging requires trace context inspection
+- Debugging leans on queue stats and worker logs
 - Error investigation requires checking queue workers
 
 ## Usage Notes
@@ -278,16 +277,11 @@ curl -X POST http://localhost:9999/payments \
 
 # Check queue statistics
 curl http://localhost:9999/health
-
-# Run comprehensive ETS queue tests
-elixir test_ets_queue.exs
 ```
 
 ### Monitoring
-- Use `/metrics` endpoint for Prometheus metrics
-- Check OpenTelemetry traces for request flows
-- Monitor PaymentQueue telemetry events for async processing
 - Queue stats via `PaymentQueue.stats/0`: `%{queue_size: N, in_flight: M}`
+- Observe async processing via `PaymentQueue.stats/0` and application logs
 - ETS table inspection: `:ets.info(:payment_work_queue)`
 
 ### Reverting Optimizations
