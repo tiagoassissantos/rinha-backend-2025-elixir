@@ -13,7 +13,8 @@ defmodule TasRinhaback3ed.Application do
 
     queue_children = [
       {Task.Supervisor, name: TasRinhaback3ed.PaymentTaskSup},
-      TasRinhaback3ed.Services.PaymentQueue
+      TasRinhaback3ed.Services.PaymentQueue,
+      TasRinhaback3ed.Services.PaymentWorker
     ]
 
     repo_children =

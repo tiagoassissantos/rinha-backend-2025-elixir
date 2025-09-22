@@ -19,6 +19,8 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
   - Payments: `lib/tas_rinhaback3ed/controllers/payment_controller.ex`
 - Services:
   - Payment gateway: `lib/tas_rinhaback3ed/services/payment_gateway.ex`
+  - Payment queue: `lib/tas_rinhaback3ed/services/payment_queue.ex`
+  - Payment worker: `lib/tas_rinhaback3ed/services/payment_worker.ex`
   - Transactions (DB): `lib/tas_rinhaback3ed/services/transactions.ex`
 - JSON helpers: `lib/tas_rinhaback3ed/json.ex`
 - Mix task (generator): `lib/mix/tasks/gen.module.ex`
@@ -45,7 +47,8 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
 - **Architecture**: Lock-free ETS-based MPSC (Multiple Producer, Single Consumer) queue
 - **Performance**: 500K+ enqueue operations/second, <50μs response times
 - **Scalability**: No GenServer bottleneck - unlimited concurrent writers
-- Purpose: decouple client request latency from payment forwarding. Workers drain ETS table concurrently via `PaymentGateway`.
+- Purpose: decouple client request latency from payment forwarding. `TasRinhaback3ed.Services.PaymentWorker` drains the ETS table and forwards payloads via `PaymentGateway`.
+- Resilience: when the fallback gateway also fails, the worker re-enqueues the payload for another attempt.
 - Concurrency: configurable via `:tas_rinhaback_3ed, :payment_queue, :max_concurrency` (default: `System.schedulers_online()*2`).
 - Back-pressure: atomic counters track `:max_queue_size` (default: `50_000`, overridable via `PAYMENT_QUEUE_MAX_SIZE`; set to `infinity` to disable). When full, controller returns `503 {"error":"queue_full"}`.
 - Supervision: started via `TasRinhaback3ed.Application` with a named `Task.Supervisor` (`TasRinhaback3ed.PaymentTaskSup`).

@@ -18,6 +18,8 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
   - Payments: `lib/tas_rinhaback3ed/controllers/payment_controller.ex`
 - Services:
   - Payment gateway: `lib/tas_rinhaback3ed/services/payment_gateway.ex`
+  - Payment queue: `lib/tas_rinhaback3ed/services/payment_queue.ex`
+  - Payment worker: `lib/tas_rinhaback3ed/services/payment_worker.ex`
   - Transactions (DB): `lib/tas_rinhaback3ed/services/transactions.ex`
 - JSON helpers: `lib/tas_rinhaback3ed/json.ex`
 - Mix task (generator): `lib/mix/tasks/gen.module.ex`
@@ -45,9 +47,11 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha backend challenge
 - Config override: `Application.get_env(:tas_rinhaback_3ed, :payments_base_url, ...)` or pass `base_url:` option to `PaymentGateway.send_payment/2` in tests.
 - Fallback behavior: only on pool pressure timeouts (`:pool_timeout`). Other errors bubble up.
 
-## Async Queue (PaymentQueue)
-- Module: `lib/tas_rinhaback3ed/services/payment_queue.ex`
-- Purpose: decouple client request latency from payment forwarding. Bounded concurrency workers drain an in-memory `:queue` and send via `PaymentGateway`.
+## Async Queue (PaymentQueue + PaymentWorker)
+- Queue module: `lib/tas_rinhaback3ed/services/payment_queue.ex`
+- Worker supervisor: `lib/tas_rinhaback3ed/services/payment_worker.ex`
+- Purpose: decouple client request latency from payment forwarding. `PaymentWorker` uses bounded concurrency to drain the ETS queue and forward payloads via `PaymentGateway`.
+- Resilience: if both the primary and fallback gateways fail, the worker re-enqueues the payload for another attempt.
 - Concurrency: configurable via `:tas_rinhaback_3ed, :payment_queue, :max_concurrency` (default: `System.schedulers_online()*2`).
 - Back-pressure: optional `:max_queue_size` (default: `50_000`, override with `PAYMENT_QUEUE_MAX_SIZE`; use `infinity` to disable). When full, controller returns `503 {"error":"queue_full"}`.
 - Supervision: started via `TasRinhaback3ed.Application` with a named `Task.Supervisor` (`TasRinhaback3ed.PaymentTaskSup`).
@@ -187,6 +191,7 @@ This section is for automation agents (e.g., Codex CLI) contributing to this rep
 - All tests pass locally (`mix test`).
 - New code is formatted and documented.
 - Public contracts (routes, payloads) updated in README or this file if changed.
+- Always commit after finalize task.
 
 ## Guardrails
 - Don’t change unrelated modules or global behaviors.

@@ -11,45 +11,67 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
 
   require Logger
 
+  alias TasRinhaback3ed.Services.Transactions
+
   @spec send_payment(map(), keyword()) :: :ok | {:error, term()}
   def send_payment(params, opts \\ []) when is_map(params) do
     params = Map.put(params, "requestedAt", DateTime.utc_now() |> DateTime.to_iso8601())
 
-    url = mount_base_url(@default_base_url, opts)
-    route = "default"
+    default_url = mount_base_url(@default_base_url, opts)
+    fallback_url = mount_base_url(@fallback_base_url, opts)
 
-    case make_request(url, params) do
-      {:ok, resp} ->
-        if resp.status == 500 do
-          new_route = "fallback"
-
-          Logger.error(
-            "#{route} gateway error #{resp.status}. Response body: #{inspect(resp.body)} Trying #{new_route}..."
-          )
-
-          new_url = mount_base_url(@fallback_base_url, opts)
-          _ = make_request(new_url, params)
-        else
-          TasRinhaback3ed.Services.Transactions.store_success(params, route)
-        end
-
+    case request_with_route(default_url, params, "default") do
+      :ok ->
         :ok
 
-      {:error, error} ->
-        new_route = "fallback"
+      {:retry, default_failure} ->
+        Logger.error(
+          "default gateway failure: #{describe_failure(default_failure)}. Trying fallback..."
+        )
 
-        Logger.error("#{route} gateway error #{inspect(error)}. Trying #{new_route}...")
+        case request_with_route(fallback_url, params, "fallback") do
+          :ok ->
+            :ok
 
-        fallback_url = mount_base_url(@fallback_base_url, opts)
-        _ = make_request(fallback_url, params)
-        {:error, error}
+          {:retry, fallback_failure} ->
+            Logger.error("fallback gateway failure: #{describe_failure(fallback_failure)}")
+
+            {:error, {:fallback_failed, %{default: default_failure, fallback: fallback_failure}}}
+        end
     end
   end
+
+  defp request_with_route(url, params, route) do
+    case make_request(url, params) do
+      {:ok, %Req.Response{} = resp} ->
+        if success_status?(resp.status) do
+          Transactions.store_success(params, route)
+          :ok
+        else
+          {:retry,
+           %{route: route, kind: :unexpected_status, status: resp.status, body: resp.body}}
+        end
+
+      {:error, reason} ->
+        {:retry, %{route: route, kind: :request_error, error: reason}}
+    end
+  end
+
+  defp describe_failure(%{route: route, kind: :unexpected_status, status: status, body: body}) do
+    "#{route} responded with status #{status}, body: #{inspect(body)}"
+  end
+
+  defp describe_failure(%{route: route, kind: :request_error, error: error}) do
+    "#{route} request error: #{inspect(error)}"
+  end
+
+  defp success_status?(status) when is_integer(status), do: status in 200..299
+
+  defp success_status?(_), do: false
 
   defp make_request(url, params) do
     try do
       headers = [{"Content-Type", "application/json"}]
-      # Optional debug timeouts to help reproduce failures locally
       base_opts = [json: params, headers: headers]
 
       opts =
@@ -59,12 +81,10 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
           base_opts
         end
 
-      # Give client spans a readable, searchable name
       req_opts = Keyword.merge([method: :post, url: url], opts)
 
       TasRinhaback3ed.HTTP.request(req_opts)
     rescue
-      # Convert unexpected raises to {:error, e} so callers can handle uniformly
       e ->
         Logger.error("Unexpected exception during request: #{inspect(e)}")
         {:error, e}

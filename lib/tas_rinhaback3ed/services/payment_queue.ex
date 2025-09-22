@@ -1,44 +1,24 @@
 defmodule TasRinhaback3ed.Services.PaymentQueue do
   @moduledoc """
-  High-performance, lock-free payment queue using ETS as MPSC queue.
+  Lock-free ETS-backed queue that stores payment payloads.
 
-  - HTTP processes write directly to ETS (no GenServer bottleneck)
-  - Workers drain ETS concurrently using :ets.first/1 → :ets.take/2
-  - Back-pressure via atomic counters (no mailbox pressure)
-  - Bounded concurrency with Task.Supervisor
-
-  Architecture:
-  - ETS table: :ordered_set for FIFO processing
-  - Key: {monotonic_time, unique_ref} for ordering
-  - Value: {payload, enqueue_time}
-  - Atomic counters: queue_size, in_flight workers
-
-  Config:
-    config :tas_rinhaback_3ed, :payment_queue,
-      max_concurrency: System.schedulers_online() * 2,
-      max_queue_size: :infinity
+  Producers (controllers) enqueue payloads with `enqueue/1` while
+  `TasRinhaback3ed.Services.PaymentWorker` drains the queue via `dequeue/0`
+  and forwards each payload to the payment gateway. Queue statistics are
+  tracked through `:atomics` counters stored in `:persistent_term`.
   """
 
   use GenServer
-  require Logger
-
-  alias TasRinhaback3ed.Services.PaymentGateway
 
   @type payload :: map()
   @type enqueue_result :: :ok | {:error, :queue_full}
+  @type dequeue_result :: {:ok, payload(), non_neg_integer()} | :empty
 
-  # ETS table name
   @table_name :payment_work_queue
-
-  # Atomic counter names
   @queue_size_counter :payment_queue_size
   @in_flight_counter :payment_in_flight
+  @max_queue_size_key {__MODULE__, :max_queue_size}
 
-  # Public API
-
-  @doc """
-  Start the payment queue supervisor and workers.
-  """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -50,35 +30,70 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   """
   @spec enqueue(payload()) :: enqueue_result()
   def enqueue(payload) when is_map(payload) do
-    # Check back-pressure before writing
-    config = Application.get_env(:tas_rinhaback_3ed, :payment_queue, [])
-    max_queue_size = Keyword.get(config, :max_queue_size, :infinity)
+    case max_queue_size() do
+      :infinity ->
+        do_enqueue(payload)
 
-    cond do
-      max_queue_size != :infinity ->
-        current_size = :atomics.get(:persistent_term.get(@queue_size_counter), 1)
+      max when is_integer(max) ->
+        queue_counter = queue_counter()
+        current_size = :atomics.get(queue_counter, 1)
 
-        if current_size >= max_queue_size do
+        if current_size >= max do
           {:error, :queue_full}
         else
           do_enqueue(payload)
         end
-
-      true ->
-        do_enqueue(payload)
     end
   end
 
-  defp do_enqueue(payload) do
-    # Generate ordered key for FIFO processing
-    key = {System.monotonic_time(), make_ref()}
+  @doc """
+  Retrieve the next payload from the queue.
+  Returns `{:ok, payload, wait_ms}` when work is available or `:empty`.
+  """
+  @spec dequeue() :: dequeue_result()
+  def dequeue do
+    case :ets.first(@table_name) do
+      :"$end_of_table" ->
+        :empty
 
-    # Direct ETS write (lock-free)
-    entry = {payload, System.monotonic_time()}
-    :ets.insert(@table_name, {key, entry})
+      key ->
+        case :ets.take(@table_name, key) do
+          [{^key, {payload, enqueue_time}}] ->
+            :atomics.sub(queue_counter(), 1, 1)
 
-    # Update atomic counter
-    :atomics.add(:persistent_term.get(@queue_size_counter), 1, 1)
+            wait_ms =
+              System.monotonic_time()
+              |> Kernel.-(enqueue_time)
+              |> System.convert_time_unit(:native, :millisecond)
+
+            {:ok, payload, wait_ms}
+
+          [] ->
+            dequeue()
+        end
+    end
+  end
+
+  @doc """
+  Increment the in-flight worker counter (called when a worker starts).
+  """
+  @spec worker_started() :: :ok
+  def worker_started do
+    :atomics.add(in_flight_counter(), 1, 1)
+    :ok
+  end
+
+  @doc """
+  Decrement the in-flight worker counter (called when a worker stops).
+  """
+  @spec worker_finished() :: :ok
+  def worker_finished do
+    counter = in_flight_counter()
+    new_value = :atomics.sub(counter, 1, 1)
+
+    if new_value < 0 do
+      :atomics.put(counter, 1, 0)
+    end
 
     :ok
   end
@@ -88,193 +103,96 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   """
   @spec stats() :: %{queue_size: non_neg_integer(), in_flight: non_neg_integer()}
   def stats do
-    queue_size = :atomics.get(:persistent_term.get(@queue_size_counter), 1)
-    in_flight = :atomics.get(:persistent_term.get(@in_flight_counter), 1)
+    queue_size = :atomics.get(queue_counter(), 1)
+    in_flight = :atomics.get(in_flight_counter(), 1)
 
     %{queue_size: max(0, queue_size), in_flight: max(0, in_flight)}
   end
-
-  # GenServer callbacks (for worker management only)
 
   @impl true
   def init(opts) do
     config = Application.get_env(:tas_rinhaback_3ed, :payment_queue, [])
 
-    max_concurrency =
-      Keyword.get(
-        opts,
-        :max_concurrency,
-        Keyword.get(config, :max_concurrency, System.schedulers_online() * 2)
-      )
+    max_queue_size =
+      opts
+      |> Keyword.get(:max_queue_size, Keyword.get(config, :max_queue_size, :infinity))
 
-    # Create ETS table for work queue
-    table_opts = [
+    ensure_queue_table!()
+    ensure_counters!()
+
+    :persistent_term.put(@max_queue_size_key, max_queue_size)
+
+    {:ok, %{max_queue_size: max_queue_size}}
+  end
+
+  @impl true
+  def terminate(_reason, _state) do
+    cleanup_persistent_terms()
+    cleanup_table()
+    :ok
+  end
+
+  defp do_enqueue(payload) do
+    # Generate ordered key for FIFO processing
+    key = {System.monotonic_time(), make_ref()}
+    entry = {payload, System.monotonic_time()}
+
+    :ets.insert(@table_name, {key, entry})
+    :atomics.add(queue_counter(), 1, 1)
+
+    :ok
+  end
+
+  defp max_queue_size do
+    :persistent_term.get(@max_queue_size_key, :infinity)
+  end
+
+  defp ensure_queue_table! do
+    if :ets.whereis(@table_name) != :undefined do
+      :ets.delete(@table_name)
+    end
+
+    :ets.new(@table_name, [
       :ordered_set,
       :public,
       :named_table,
       {:read_concurrency, true},
       {:write_concurrency, true}
-    ]
+    ])
 
-    @table_name = :ets.new(@table_name, table_opts)
+    :ok
+  end
 
-    # Create atomic counters
+  defp ensure_counters! do
     queue_counter = :atomics.new(1, [])
     in_flight_counter = :atomics.new(1, [])
 
-    # Store counters in persistent_term for fast access
     :persistent_term.put(@queue_size_counter, queue_counter)
     :persistent_term.put(@in_flight_counter, in_flight_counter)
-
-    state = %{
-      max_concurrency: max_concurrency,
-      worker_tasks: MapSet.new()
-    }
-
-    # Start initial worker pool
-    {:ok, start_workers(state)}
   end
 
-  @impl true
-  def handle_info({ref, result}, state) when is_reference(ref) do
-    # Worker completed
-    _ = Process.demonitor(ref, [:flush])
-
-    # Remove from worker set and decrement in-flight counter
-    worker_tasks = MapSet.delete(state.worker_tasks, ref)
-    :atomics.sub(:persistent_term.get(@in_flight_counter), 1, 1)
-
-    case result do
-      :ok -> :ok
-      {:error, reason} -> Logger.warning("Payment worker error: #{inspect(reason)}")
-      other -> Logger.debug("Payment worker result: #{inspect(other)}")
-    end
-
-    # Maintain worker pool size
-    state = %{state | worker_tasks: worker_tasks}
-    state = start_workers(state)
-
-    {:noreply, state}
+  defp queue_counter do
+    :persistent_term.get(@queue_size_counter)
   end
 
-  @impl true
-  def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
-    # Worker crashed
-    if MapSet.member?(state.worker_tasks, ref) do
-      Logger.error("Payment worker crashed: #{inspect(reason)}")
-
-      worker_tasks = MapSet.delete(state.worker_tasks, ref)
-      :atomics.sub(:persistent_term.get(@in_flight_counter), 1, 1)
-
-      state = %{state | worker_tasks: worker_tasks}
-      state = start_workers(state)
-
-      {:noreply, state}
-    else
-      {:noreply, state}
-    end
+  defp in_flight_counter do
+    :persistent_term.get(@in_flight_counter)
   end
 
-  # Private functions
-
-  # Start workers up to max concurrency
-  defp start_workers(state) do
-    current_workers = MapSet.size(state.worker_tasks)
-    needed_workers = state.max_concurrency - current_workers
-
-    if needed_workers > 0 do
-      new_tasks =
-        1..needed_workers
-        |> Enum.map(fn _ -> start_worker() end)
-        |> Enum.into(MapSet.new())
-
-      worker_tasks = MapSet.union(state.worker_tasks, new_tasks)
-      %{state | worker_tasks: worker_tasks}
-    else
-      state
-    end
-  end
-
-  # Start a single worker task
-  defp start_worker do
-    task =
-      Task.Supervisor.async_nolink(TasRinhaback3ed.PaymentTaskSup, fn ->
-        worker_loop()
-      end)
-
-    :atomics.add(:persistent_term.get(@in_flight_counter), 1, 1)
-    task.ref
-  end
-
-  # Worker main loop - drain ETS queue
-  defp worker_loop do
-    case take_next_work() do
-      {:ok, payload, wait_ms} ->
-        result =
-          try do
-            PaymentGateway.send_payment(payload)
-          rescue
-            error ->
-              Logger.error("Payment worker exception: #{inspect(error)}")
-              {:error, error}
-          catch
-            :exit, reason ->
-              Logger.error("Payment worker exit: #{inspect(reason)}")
-              {:error, reason}
-          end
-
-        case result do
-          :ok ->
-            :ok
-
-          {:error, reason} ->
-            Logger.warning("Payment processed with error after #{wait_ms}ms: #{inspect(reason)}")
-
-          other ->
-            Logger.debug("Payment gateway returned unexpected value: #{inspect(other)}")
-        end
-
-        worker_loop()
-
-      :empty ->
-        Process.sleep(1)
-        worker_loop()
-    end
-  rescue
-    error ->
-      Logger.error("Worker loop error: #{inspect(error)}")
-      worker_loop()
-  end
-
-  # Take the next work item from ETS queue
-  defp take_next_work do
-    case :ets.first(@table_name) do
-      :"$end_of_table" ->
-        :empty
-
-      key ->
-        case :ets.take(@table_name, key) do
-          [{^key, {payload, enqueue_time}}] ->
-            :atomics.sub(:persistent_term.get(@queue_size_counter), 1, 1)
-
-            now = System.monotonic_time()
-            wait_ms = System.convert_time_unit(now - enqueue_time, :native, :millisecond)
-
-            {:ok, payload, wait_ms}
-
-          [] ->
-            take_next_work()
-        end
-    end
-  end
-
-  @impl true
-  def terminate(_reason, _state) do
-    # Clean up persistent terms
+  defp cleanup_persistent_terms do
     :persistent_term.erase(@queue_size_counter)
     :persistent_term.erase(@in_flight_counter)
+    :persistent_term.erase(@max_queue_size_key)
+  end
 
-    # ETS table will be cleaned up automatically
-    :ok
+  defp cleanup_table do
+    case :ets.whereis(@table_name) do
+      :undefined ->
+        :ok
+
+      _tid ->
+        :ets.delete(@table_name)
+        :ok
+    end
   end
 end
