@@ -12,6 +12,8 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
+    ports:
+      - "4001:4001"
     expose:
       - "4001"
     extra_hosts:
@@ -41,6 +43,8 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
+    ports:
+      - "4002:4002"
     expose:
       - "4002"
     extra_hosts:
@@ -98,7 +102,7 @@ services:
       resources:
         limits:
           cpus: "2.4"
-          memory: "960MB"
+          memory: "60MB"
 
 networks:
   payment-processor:

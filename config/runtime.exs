@@ -29,7 +29,7 @@ if config_env() in [:dev, :prod] do
 
   pool_size =
     case System.get_env("DB_POOL_SIZE") do
-      nil -> System.schedulers_online() * 1
+      nil -> System.schedulers_online() * 5
       v -> String.to_integer(v)
     end
 
@@ -44,7 +44,7 @@ end
 if config_env() in [:dev, :prod] do
   pool_size =
     case System.get_env("HTTP_POOL_SIZE") do
-      nil -> 30
+      nil -> 300
       v -> String.to_integer(v)
     end
 
