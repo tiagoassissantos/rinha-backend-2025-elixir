@@ -7,7 +7,9 @@ defmodule TasRinhaback3ed.MixProject do
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      elixirc_options: (Mix.env() == :prod) && [debug_info: false] || [],
+      start_permanent: Mix.env() == :prod
     ]
   end
 
@@ -31,9 +33,7 @@ defmodule TasRinhaback3ed.MixProject do
       {:postgrex, ">= 0.0.0"},
       {:observer_cli, "~> 1.8", only: :dev},
       {:recon, "~> 2.5", only: :dev},
-      {:bypass, "~> 2.1", only: :test},
-      {:prom_ex, "~> 1.11"},
-      {:telemetry_metrics_prometheus, "~> 1.0"}
+      {:bypass, "~> 2.1", only: :test}
     ]
   end
 end

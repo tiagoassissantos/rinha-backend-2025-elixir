@@ -37,20 +37,15 @@ defmodule TasRinhaback3ed.Application do
         [
           {
             Bandit,
-            plug: TasRinhaback3ed.Router, scheme: :http, port: port
+            plug: TasRinhaback3ed.Router,
+            scheme: :http,
+            port: port
           }
         ]
       end
 
-    prom_ex_children =
-      if current_env() == :test do
-        []
-      else
-        [TasRinhaback3ed.PromEx]
-      end
-
     children =
-      repo_children ++ prom_ex_children ++ http_client_children ++ queue_children ++ http_children
+      repo_children ++ http_client_children ++ queue_children ++ http_children
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

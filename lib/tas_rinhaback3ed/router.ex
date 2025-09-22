@@ -3,10 +3,6 @@ defmodule TasRinhaback3ed.Router do
 
   alias TasRinhaback3ed.Controllers.PaymentController
   alias TasRinhaback3ed.Controllers.HealthController
-  alias TasRinhaback3ed.PromEx, as: TasPromEx
-
-  plug(PromEx.Plug, prom_ex_module: TasPromEx, path: "/metrics")
-  plug(Plug.Telemetry, event_prefix: [:tas_rinhaback3ed, :router])
 
   plug(Plug.Parsers,
     parsers: [:json],

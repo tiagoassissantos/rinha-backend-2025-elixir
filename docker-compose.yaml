@@ -12,6 +12,10 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
+      - ERL_AFLAGS=+S 2:2
+      - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
+      - ERL_FULLSWEEP_AFTER=10
+      - LOG_LEVEL=warning
     ports:
       - "4001:4001"
     expose:
@@ -43,6 +47,10 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
+      - ERL_AFLAGS=+S 2:2
+      - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
+      - ERL_FULLSWEEP_AFTER=10
+      - LOG_LEVEL=warning
     ports:
       - "4002:4002"
     expose:

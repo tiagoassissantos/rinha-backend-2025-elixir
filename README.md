@@ -33,7 +33,6 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
 - GET `/health`: returns `{ "status": "ok", "queue": {"queue_size": N, "in_flight": M} }` with queue statistics.
 - POST `/payments`: **OPTIMIZED** - accepts any payload and immediately enqueues for asynchronous forwarding. Returns 204 (No Content) for maximum performance (~50μs response time). Returns 503 `{ "error": "queue_full" }` only if queue is at capacity.
 - GET `/payments-summary`: requires `from` and `to` ISO8601 query params and returns an aggregated summary from the DB when available; otherwise falls back to a stub payload. Responds 400 with `{ error: "invalid_request", errors: [...] }` if params are missing/invalid.
-- GET `/metrics`: Prometheus exposition format served by PromEx (text/plain). Available when the PromEx supervisor is running.
 
 ## External Gateways
 - Primary base URL: `http://localhost:8001`
@@ -88,7 +87,6 @@ Concurrency limit      | ~10K req  | Unlimited | ∞
 ### Monitoring
 - Queue stats: `PaymentQueue.stats()` → `%{queue_size: N, in_flight: M}`
 - Health endpoint: `GET /health` includes real-time queue statistics
-- PromEx metrics: `GET /metrics` exports BEAM/application/router/Ecto telemetry for scraping
 - ETS introspection: `:ets.info(:payment_work_queue)` for debugging
 
 ## Run Locally
