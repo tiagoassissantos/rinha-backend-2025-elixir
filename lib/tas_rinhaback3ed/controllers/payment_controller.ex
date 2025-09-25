@@ -40,12 +40,12 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
           response_iodata =
             Jason.encode_to_iodata!(%{
               default: %{
-                totalRequests: 43_236,
-                totalAmount: 4_142_345.92
+                totalRequests: 0,
+                totalAmount: 0
               },
               fallback: %{
-                totalRequests: 423_545,
-                totalAmount: 329_347.34
+                totalRequests: 0,
+                totalAmount: 0
               }
             })
 
