@@ -11,6 +11,7 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
   @empty_response_204 ""
 
   @queue_full_response_iodata Jason.encode_to_iodata!(%{error: "queue_full"})
+  @queue_unavailable_response_iodata Jason.encode_to_iodata!(%{error: "queue_unavailable"})
   @invalid_request_response_iodata Jason.encode_to_iodata!(%{error: "invalid_request"})
 
   def payments(conn, params) do
@@ -23,19 +24,26 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
 
       {:error, :queue_full} ->
         send_json_iodata(conn, 503, @queue_full_response_iodata)
+
+      {:error, :queue_unavailable} ->
+        send_json_iodata(conn, 503, @queue_unavailable_response_iodata)
     end
   end
 
   def payments_summary(conn, %{"from" => from_str, "to" => to_str})
       when is_binary(from_str) and is_binary(to_str) do
+    Logger.debug("Received payment summary request from #{from_str} to #{to_str}")
     with {:ok, from_dt} <- parse_iso8601(from_str),
          {:ok, to_dt} <- parse_iso8601(to_str) do
+      Logger.debug("Parsed dates successfully: #{from_dt} to #{to_dt}")
       case Transactions.summary(from_dt, to_dt) do
         {:ok, result} ->
+          Logger.debug("Payment summary result: #{inspect(result)}")
           response_iodata = result |> normalize_amounts() |> Jason.encode_to_iodata!()
           send_json_iodata(conn, 200, response_iodata)
 
         {:error, :unavailable} ->
+          Logger.error("Payment summary unavailable")
           # Prebuild fallback response to avoid allocations
           response_iodata =
             Jason.encode_to_iodata!(%{

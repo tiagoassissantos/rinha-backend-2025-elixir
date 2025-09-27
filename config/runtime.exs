@@ -85,4 +85,46 @@ if config_env() in [:dev, :prod] do
            :payment_queue,
            Keyword.put(queue_config, :max_queue_size, queue_max_size)
   end
+
+  role =
+    System.get_env("APP_ROLE", "api")
+    |> String.trim()
+    |> String.downcase()
+    |> case do
+      "" -> :api
+      "api" -> :api
+      "worker" -> :worker
+      other ->
+        raise ArgumentError, "APP_ROLE must be either \"api\" or \"worker\", got: #{inspect(other)}"
+    end
+
+  queue_config = Application.get_env(:tas_rinhaback_3ed, :payment_queue, [])
+
+  queue_mode =
+    case {role, System.get_env("PAYMENT_QUEUE_NODE")} do
+      {:worker, _} ->
+        :local
+
+      {:api, nil} ->
+        Keyword.get(queue_config, :mode, :local)
+
+      {:api, node_name} ->
+        trimmed = String.trim(node_name)
+
+        if trimmed == "" do
+          Keyword.get(queue_config, :mode, :local)
+        else
+          unless String.contains?(trimmed, "@") do
+            raise ArgumentError,
+                  "PAYMENT_QUEUE_NODE must include a node and host, e.g., worker1@worker1"
+          end
+
+          {:remote, String.to_atom(trimmed)}
+        end
+    end
+
+  queue_config = Keyword.put(queue_config, :mode, queue_mode)
+
+  config :tas_rinhaback_3ed, :payment_queue, queue_config
+  config :tas_rinhaback_3ed, :app_role, role
 end

@@ -5,13 +5,19 @@ services:
       dockerfile: Dockerfile
     platform: ${APP_PLATFORM:-linux/amd64}
     container_name: app1
+    hostname: app1
     environment:
+      - APP_ROLE=api
       - PORT=4001
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
+      - PAYMENT_QUEUE_NODE=worker1@worker1
+      - RELEASE_DISTRIBUTION=sname
+      - RELEASE_NODE=app1
+      - RELEASE_COOKIE=rinha-cluster
       - ERL_AFLAGS=+S 2:2
       - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
       - ERL_FULLSWEEP_AFTER=10
@@ -31,8 +37,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: "132MB"
+          cpus: "0.2"
+          memory: "80MB"
 
   app2:
     build:
@@ -40,13 +46,19 @@ services:
       dockerfile: Dockerfile
     platform: ${APP_PLATFORM:-linux/amd64}
     container_name: app2
+    hostname: app2
     environment:
+      - APP_ROLE=api
       - PORT=4002
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
+      - PAYMENT_QUEUE_NODE=worker1@worker1
+      - RELEASE_DISTRIBUTION=sname
+      - RELEASE_NODE=app2
+      - RELEASE_COOKIE=rinha-cluster
       - ERL_AFLAGS=+S 2:2
       - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
       - ERL_FULLSWEEP_AFTER=10
@@ -66,8 +78,40 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: "132MB"
+          cpus: "0.2"
+          memory: "80MB"
+
+  worker1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    platform: ${APP_PLATFORM:-linux/amd64}
+    container_name: worker1
+    hostname: worker1
+    environment:
+      - APP_ROLE=worker
+      - RELEASE_DISTRIBUTION=sname
+      - RELEASE_NODE=worker1
+      - RELEASE_COOKIE=rinha-cluster
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=tasrinha_dev
+      - ERL_AFLAGS=+S 2:2
+      - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
+      - ERL_FULLSWEEP_AFTER=10
+      - LOG_LEVEL=warning
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - appnet
+      - payment-processor
+    deploy:
+      resources:
+        limits:
+          cpus: "0.7"
+          memory: "114MB"
 
   nginx:
     image: nginx:alpine
@@ -75,6 +119,7 @@ services:
     depends_on:
       - app1
       - app2
+      - worker1
     ports:
       - "9999:80"
     volumes:
@@ -109,8 +154,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2.4"
-          memory: "60MB"
+          cpus: "0.3"
+          memory: "50MB"
 
 networks:
   payment-processor:

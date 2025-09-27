@@ -10,6 +10,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
 - HTTP client: Req (Finch/Mint under the hood)
 - Tests: ExUnit, Plug.Test, Bypass (HTTP mocking)
 - Default port: 9999 (overridable via `PORT`)
+- Worker node: Dedicated Erlang distribution worker (`worker1`) that owns the in-memory payment queue
 
 ## Repo Map
 - App entry/supervision: `lib/tas_rinhaback3ed/application.ex`
@@ -31,7 +32,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
 
 ## Endpoints (current)
 - GET `/health`: returns `{ "status": "ok", "queue": {"queue_size": N, "in_flight": M} }` with queue statistics.
-- POST `/payments`: **OPTIMIZED** - accepts any payload and immediately enqueues for asynchronous forwarding. Returns 204 (No Content) for maximum performance (~50μs response time). Returns 503 `{ "error": "queue_full" }` only if queue is at capacity.
+- POST `/payments`: **OPTIMIZED** - accepts any payload and immediately enqueues for asynchronous forwarding. Returns 204 (No Content) for maximum performance (~50μs response time). Returns 503 `{ "error": "queue_full" }` when the queue is saturated and 503 `{ "error": "queue_unavailable" }` when the worker node cannot be reached.
 - GET `/payments-summary`: requires `from` and `to` ISO8601 query params and returns an aggregated summary from the DB when available; otherwise falls back to a stub payload. Responds 400 with `{ error: "invalid_request", errors: [...] }` if params are missing/invalid.
 
 ## External Gateways
@@ -43,9 +44,9 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
 
 ## High-Performance ETS Queue (PaymentQueue) 🚀
 - Module: `lib/tas_rinhaback3ed/services/payment_queue.ex`
-- **Architecture**: Lock-free ETS-based MPSC (Multiple Producer, Single Consumer) queue
+- **Architecture**: Lock-free ETS-based MPSC (Multiple Producer, Single Consumer) queue running on the dedicated worker node (`worker1`). API nodes publish jobs over Erlang distribution and never host the ETS table locally.
 - **Performance**: 500K+ enqueue operations/second, <50μs response times
-- **Scalability**: No GenServer bottleneck - unlimited concurrent writers
+- **Scalability**: No GenServer bottleneck - unlimited concurrent writers (API nodes send direct RPC calls to the worker, which writes to ETS)
 - Purpose: decouple client request latency from payment forwarding. `TasRinhaback3ed.Services.PaymentWorker` drains the ETS table and forwards payloads via `PaymentGateway`.
 - Resilience: when the fallback gateway also fails, the worker re-enqueues the payload for another attempt.
 - Concurrency: configurable via `:tas_rinhaback_3ed, :payment_queue, :max_concurrency` (default: `System.schedulers_online()*2`).
@@ -85,7 +86,7 @@ Concurrency limit      | ~10K req  | Unlimited | ∞
 ```
 
 ### Monitoring
-- Queue stats: `PaymentQueue.stats()` → `%{queue_size: N, in_flight: M}`
+- Queue stats: `PaymentQueue.stats()` → `%{queue_size: N, in_flight: M}` (API nodes proxy this call to the worker transparently)
 - Health endpoint: `GET /health` includes real-time queue statistics
 - ETS introspection: `:ets.info(:payment_work_queue)` for debugging
 
@@ -120,24 +121,26 @@ Concurrency limit      | ~10K req  | Unlimited | ∞
 - JSON: only encode maps; set content type via helper.
 
 ## Docker & Compose
-- Dev (two instances + nginx LB on 9999):
+- Dev stack (two API instances + worker + nginx LB on 9999):
   - `docker compose up`
   - Visit `http://localhost:9999/health`
-  - Backends listen on `app1:4001` and `app2:4002` (nginx upstream), running as the non-root `app` user inside the container
+  - API containers listen on `app1:4001` and `app2:4002` (nginx upstream) and forward work to `worker1`
+  - Worker container (`worker1`) hosts the ETS queue and payment workers; configure via `APP_ROLE=worker`
   - Set `APP_PLATFORM` before building if your Docker host architecture is not `linux/amd64` (e.g., `export APP_PLATFORM=linux/arm64` on Apple Silicon) to avoid `exec format error`
   - Compose mounts host `${HOME}/.mix -> /root/.mix` so Hex is available offline
   - PostgreSQL available as `postgres:5432` (host mapped to `5432`), user `postgres`, password `postgres`, database `tasrinha_dev`.
 
 ### Dev Workflow (making code changes)
 - Restart apps to pick up changes:
-  - `docker compose restart app1 app2`
+  - `docker compose restart app1 app2 worker1`
 - View logs while iterating:
-  - `docker compose logs -f app1 app2 nginx`
+  - `docker compose logs -f app1 app2 worker1 nginx`
   - Tear down the stack:
   - `docker compose down` (add `--volumes` to clean deps/build caches if you mounted them)
 
 Notes
 - Nginx maps host `9999 -> nginx:80`, and proxies to `app1:4001` and `app2:4002`.
+- Distributed queue: API nodes set `APP_ROLE=api`, `PAYMENT_QUEUE_NODE=worker1@worker1`; the worker sets `APP_ROLE=worker`. All nodes share the same `RELEASE_COOKIE`, run with `RELEASE_DISTRIBUTION=sname`, use unique short `RELEASE_NODE` values (`app1`, `app2`, `worker1`), and containers set matching hostnames so node names resolve (e.g. `app1@app1`).
 - From inside containers, use `http://host.docker.internal:8001` (and `8002`) to reach gateway mocks running on the host.
 
 Troubleshooting

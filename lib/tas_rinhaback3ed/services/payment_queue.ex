@@ -9,9 +9,10 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   """
 
   use GenServer
+  require Logger
 
   @type payload :: map()
-  @type enqueue_result :: :ok | {:error, :queue_full}
+  @type enqueue_result :: :ok | {:error, :queue_full} | {:error, :queue_unavailable}
   @type dequeue_result :: {:ok, payload(), non_neg_integer()} | :empty
 
   @table_name :payment_work_queue
@@ -30,19 +31,12 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   """
   @spec enqueue(payload()) :: enqueue_result()
   def enqueue(payload) when is_map(payload) do
-    case max_queue_size() do
-      :infinity ->
-        do_enqueue(payload)
+    case queue_mode() do
+      :local ->
+        enqueue_local(payload)
 
-      max when is_integer(max) ->
-        queue_counter = queue_counter()
-        current_size = :atomics.get(queue_counter, 1)
-
-        if current_size >= max do
-          {:error, :queue_full}
-        else
-          do_enqueue(payload)
-        end
+      {:remote, node} ->
+        remote_enqueue(node, payload)
     end
   end
 
@@ -52,6 +46,8 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   """
   @spec dequeue() :: dequeue_result()
   def dequeue do
+    ensure_local!(:dequeue)
+
     case :ets.first(@table_name) do
       :"$end_of_table" ->
         :empty
@@ -79,6 +75,7 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   """
   @spec worker_started() :: :ok
   def worker_started do
+    ensure_local!(:worker_started)
     :atomics.add(in_flight_counter(), 1, 1)
     :ok
   end
@@ -88,6 +85,7 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   """
   @spec worker_finished() :: :ok
   def worker_finished do
+    ensure_local!(:worker_finished)
     counter = in_flight_counter()
     new_value = :atomics.sub(counter, 1, 1)
 
@@ -103,6 +101,16 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   """
   @spec stats() :: %{queue_size: non_neg_integer(), in_flight: non_neg_integer()}
   def stats do
+    case queue_mode() do
+      :local ->
+        local_stats()
+
+      {:remote, node} ->
+        remote_stats(node)
+    end
+  end
+
+  defp local_stats do
     queue_size = :atomics.get(queue_counter(), 1)
     in_flight = :atomics.get(in_flight_counter(), 1)
 
@@ -132,6 +140,23 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
     :ok
   end
 
+  defp enqueue_local(payload) do
+    case max_queue_size() do
+      :infinity ->
+        do_enqueue(payload)
+
+      max when is_integer(max) ->
+        queue_counter = queue_counter()
+        current_size = :atomics.get(queue_counter, 1)
+
+        if current_size >= max do
+          {:error, :queue_full}
+        else
+          do_enqueue(payload)
+        end
+    end
+  end
+
   defp do_enqueue(payload) do
     # Generate ordered key for FIFO processing
     key = {System.monotonic_time(), make_ref()}
@@ -145,6 +170,61 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
 
   defp max_queue_size do
     :persistent_term.get(@max_queue_size_key, :infinity)
+  end
+
+  defp queue_mode do
+    case Application.get_env(:tas_rinhaback_3ed, :payment_queue, []) |> Keyword.get(:mode, :local) do
+      {:remote, node} when node == node() ->
+        :local
+
+      other ->
+        other
+    end
+  end
+
+  defp remote_enqueue(node, payload) do
+    _ = Node.connect(node)
+
+    case :rpc.call(node, __MODULE__, :enqueue, [payload]) do
+      {:badrpc, reason} ->
+        Logger.warning("Payment queue remote enqueue failed for #{inspect(node)}: #{inspect(reason)}")
+        {:error, :queue_unavailable}
+
+      other ->
+        other
+    end
+  end
+
+  defp remote_stats(node) do
+    _ = Node.connect(node)
+
+    case :rpc.call(node, __MODULE__, :stats, []) do
+      {:badrpc, reason} ->
+        Logger.warning("Payment queue remote stats failed for #{inspect(node)}: #{inspect(reason)}")
+        %{queue_size: 0, in_flight: 0}
+
+      %{} = stats ->
+        stats
+
+      other ->
+        Logger.warning("Payment queue remote stats returned unexpected value from #{inspect(node)}: #{inspect(other)}")
+        %{queue_size: 0, in_flight: 0}
+    end
+  end
+
+  defp ensure_local!(operation) do
+    case queue_mode() do
+      :local ->
+        :ok
+
+      {:remote, node} ->
+        if Process.whereis(__MODULE__) do
+          :ok
+        else
+          raise ArgumentError,
+                "PaymentQueue.#{operation} is unavailable in remote mode (configured node: #{inspect(node)})"
+        end
+    end
   end
 
   defp ensure_queue_table! do

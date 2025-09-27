@@ -7,41 +7,52 @@ defmodule TasRinhaback3ed.Application do
 
   @impl true
   def start(_type, _args) do
+    queue_config = Application.get_env(:tas_rinhaback_3ed, :payment_queue, [])
+    queue_mode = Keyword.get(queue_config, :mode, :local)
+    role = Application.get_env(:tas_rinhaback_3ed, :app_role, :api)
+
     http_client_children = [
       {Finch, name: TasRinhaback3ed.Finch, pools: finch_pools()}
     ]
 
-    queue_children = [
-      {Task.Supervisor, name: TasRinhaback3ed.PaymentTaskSup},
-      TasRinhaback3ed.Services.PaymentQueue,
-      TasRinhaback3ed.Services.PaymentWorker
-    ]
+    queue_children =
+      case queue_mode do
+        :local ->
+          [
+            {Task.Supervisor, name: TasRinhaback3ed.PaymentTaskSup},
+            TasRinhaback3ed.Services.PaymentQueue,
+            TasRinhaback3ed.Services.PaymentWorker
+          ]
 
-    repo_children =
-      if current_env() == :test do
-        []
-      else
-        [TasRinhaback3ed.Repo]
+        {:remote, _node} ->
+          []
       end
 
-    http_children =
-      if current_env() == :test do
-        []
-      else
-        port =
-          case System.get_env("PORT") do
-            nil -> 9999
-            val -> String.to_integer(val)
-          end
+    repo_children = [TasRinhaback3ed.Repo]
 
-        [
-          {
-            Bandit,
-            plug: TasRinhaback3ed.Router,
-            scheme: :http,
-            port: port
-          }
-        ]
+    http_children =
+      cond do
+        role == :worker ->
+          []
+
+        current_env() == :test ->
+          []
+
+        true ->
+          port =
+            case System.get_env("PORT") do
+              nil -> 9999
+              val -> String.to_integer(val)
+            end
+
+          [
+            {
+              Bandit,
+              plug: TasRinhaback3ed.Router,
+              scheme: :http,
+              port: port
+            }
+          ]
       end
 
     children =

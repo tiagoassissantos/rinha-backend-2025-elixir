@@ -22,20 +22,18 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
 
     case request_with_route(default_url, params, "default") do
       :ok ->
+        Logger.debug("Payment succeeded via default gateway")
         :ok
 
       {:retry, default_failure} ->
-        Logger.error(
-          "default gateway failure: #{describe_failure(default_failure)}. Trying fallback..."
-        )
+        #Logger.error("default gateway failure: #{describe_failure(default_failure)}. Trying fallback...")
 
         case request_with_route(fallback_url, params, "fallback") do
           :ok ->
             :ok
 
           {:retry, fallback_failure} ->
-            Logger.error("fallback gateway failure: #{describe_failure(fallback_failure)}")
-
+            #Logger.error("fallback gateway failure: #{describe_failure(fallback_failure)}")
             {:error, {:fallback_failed, %{default: default_failure, fallback: fallback_failure}}}
         end
     end
@@ -44,15 +42,19 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
   defp request_with_route(url, params, route) do
     case make_request(url, params) do
       {:ok, %Req.Response{} = resp} ->
+        Logger.debug("Payment response: #{inspect(resp)}")
         if success_status?(resp.status) do
+          Logger.debug("#{route} gateway succeeded with status #{resp.status}")
           Transactions.store_success(params, route)
           :ok
         else
+          #Logger.error("Unexpected status #{resp.status} from #{route} gateway")
           {:retry,
            %{route: route, kind: :unexpected_status, status: resp.status, body: resp.body}}
         end
 
       {:error, reason} ->
+        #Logger.error("Request error from #{route} gateway: #{inspect(reason)}")
         {:retry, %{route: route, kind: :request_error, error: reason}}
     end
   end
@@ -65,32 +67,32 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
     "#{route} request error: #{inspect(error)}"
   end
 
-  defp success_status?(status) when is_integer(status), do: status in 200..299
+  defp success_status?(status) when is_integer(status), do: status in 200..499
 
   defp success_status?(_), do: false
 
   defp make_request(url, params) do
     try do
       headers = [{"Content-Type", "application/json"}]
-      base_opts = [json: params, headers: headers]
+      base_opts = [json: params, headers: headers, receive_timeout: 1_000]
 
       opts =
         if Application.get_env(:tas_rinhaback_3ed, :payments_debug, false) do
-          Keyword.merge(base_opts, receive_timeout: 2_000, connect_options: [timeout: 1_000])
+          Keyword.merge(base_opts, receive_timeout: 1_000, connect_options: [timeout: 500])
         else
           base_opts
         end
 
       req_opts = Keyword.merge([method: :post, url: url], opts)
-
+      Logger.info("Payment request: #{inspect(req_opts)}")
       TasRinhaback3ed.HTTP.request(req_opts)
     rescue
       e ->
-        Logger.error("Unexpected exception during request: #{inspect(e)}")
+        #Logger.error("Unexpected exception during request: #{inspect(e)}")
         {:error, e}
     catch
       :exit, reason ->
-        Logger.error("EXIT during request: #{inspect(reason)}")
+        #Logger.error("EXIT during request: #{inspect(reason)}")
         {:error, reason}
     end
   end
