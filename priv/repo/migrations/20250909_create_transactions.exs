@@ -14,4 +14,3 @@ defmodule TasRinhaback3ed.Repo.Migrations.CreateTransactions do
     create index(:transactions, [:route])
   end
 end
-

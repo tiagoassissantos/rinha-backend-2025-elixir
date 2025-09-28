@@ -25,6 +25,29 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
+  @impl true
+  def init(opts) do
+    config = Application.get_env(:tas_rinhaback_3ed, :payment_queue, [])
+
+    max_queue_size =
+      opts
+      |> Keyword.get(:max_queue_size, Keyword.get(config, :max_queue_size, :infinity))
+
+    ensure_queue_table!()
+    ensure_counters!()
+
+    :persistent_term.put(@max_queue_size_key, max_queue_size)
+
+    {:ok, %{max_queue_size: max_queue_size}}
+  end
+
+  @impl true
+  def terminate(_reason, _state) do
+    cleanup_persistent_terms()
+    cleanup_table()
+    :ok
+  end
+
   @doc """
   Enqueue a payment payload directly to ETS (lock-free).
   Returns :ok immediately or {:error, :queue_full} if over capacity.
@@ -115,29 +138,6 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
     in_flight = :atomics.get(in_flight_counter(), 1)
 
     %{queue_size: max(0, queue_size), in_flight: max(0, in_flight)}
-  end
-
-  @impl true
-  def init(opts) do
-    config = Application.get_env(:tas_rinhaback_3ed, :payment_queue, [])
-
-    max_queue_size =
-      opts
-      |> Keyword.get(:max_queue_size, Keyword.get(config, :max_queue_size, :infinity))
-
-    ensure_queue_table!()
-    ensure_counters!()
-
-    :persistent_term.put(@max_queue_size_key, max_queue_size)
-
-    {:ok, %{max_queue_size: max_queue_size}}
-  end
-
-  @impl true
-  def terminate(_reason, _state) do
-    cleanup_persistent_terms()
-    cleanup_table()
-    :ok
   end
 
   defp enqueue_local(payload) do
