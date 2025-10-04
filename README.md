@@ -100,6 +100,7 @@ Concurrency limit      | ~10K req  | Unlimited | ∞
 ## Configuration
 - Port (prod): `PORT` env var. Default: `9999`.
 - Gateway base URL: `:tas_rinhaback_3ed, :payments_base_url`.
+- HTTP client timeouts: global `receive_timeout`/`pool_timeout` capped at 1_000ms per request.
 - Payment queue size: `PAYMENT_QUEUE_MAX_SIZE` (positive integer or `infinity`, defaults to `50_000`).
 - Logger: console with request_id metadata.
 - Database (Ecto/PostgreSQL): configure via `DATABASE_URL` or `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`. Optional: `DB_POOL_SIZE`, `DB_SSL`.

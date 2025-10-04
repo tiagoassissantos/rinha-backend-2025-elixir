@@ -13,7 +13,7 @@ config :logger, :console,
 
 # Payment queue defaults
 config :tas_rinhaback_3ed, :payment_queue,
-  max_concurrency: System.schedulers_online() * 1,
+  max_concurrency: 20,
   max_queue_size: 50_000,
   mode: :local
 

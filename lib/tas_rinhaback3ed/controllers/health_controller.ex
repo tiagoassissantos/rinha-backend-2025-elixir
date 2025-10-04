@@ -8,7 +8,9 @@ defmodule TasRinhaback3ed.Controllers.HealthController do
 
     response = %{
       status: "ok",
-      queue: queue_stats
+      queue: queue_stats,
+      memory: inspect(:erlang.memory()),
+      system_info: inspect(:erlang.system_info(:wordsize))
     }
 
     JSON.send_json(conn, 200, response)

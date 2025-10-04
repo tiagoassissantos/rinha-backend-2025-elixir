@@ -15,6 +15,8 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
 
   @spec send_payment(map(), keyword()) :: :ok | {:error, term()}
   def send_payment(params, opts \\ []) when is_map(params) do
+    start_time = System.monotonic_time(:millisecond)
+
     params = Map.put(params, "requestedAt", DateTime.utc_now() |> DateTime.to_iso8601())
 
     default_url = mount_base_url(@default_base_url, opts)
@@ -22,11 +24,13 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
 
     case request_with_route(default_url, params, "default") do
       :ok ->
-        Logger.debug("Payment succeeded via default gateway")
+        end_time = System.monotonic_time(:millisecond)
+        elapsed_time = end_time - start_time
+        Logger.info("Payment Gateway send_payment processed in #{elapsed_time}ms")
         :ok
 
       {:retry, default_failure} ->
-        #Logger.error("default gateway failure: #{describe_failure(default_failure)}. Trying fallback...")
+        Logger.info("default gateway failure: #{describe_failure(default_failure)}. Trying fallback...")
 
         case request_with_route(fallback_url, params, "fallback") do
           :ok ->
@@ -45,7 +49,11 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
         Logger.debug("Payment response: #{inspect(resp)}")
         if success_status?(resp.status) do
           Logger.debug("#{route} gateway succeeded with status #{resp.status}")
+          start_time = System.monotonic_time(:millisecond)
           Transactions.store_success(params, route)
+          end_time = System.monotonic_time(:millisecond)
+          elapsed_time = end_time - start_time
+          Logger.info(";#{inspect(Map.get(params, "correlationId"))}; Payment Gateway store_success processed in; #{elapsed_time}")
           :ok
         else
           #Logger.error("Unexpected status #{resp.status} from #{route} gateway")
@@ -73,19 +81,27 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
 
   defp make_request(url, params) do
     try do
+      start_time = System.monotonic_time(:millisecond)
+
       headers = [{"Content-Type", "application/json"}]
-      base_opts = [json: params, headers: headers, receive_timeout: 1_000]
+      base_opts = [json: params, headers: headers]
 
       opts =
         if Application.get_env(:tas_rinhaback_3ed, :payments_debug, false) do
-          Keyword.merge(base_opts, receive_timeout: 1_000, connect_options: [timeout: 500])
+          Keyword.merge(base_opts, connect_options: [timeout: 500])
         else
           base_opts
         end
 
       req_opts = Keyword.merge([method: :post, url: url], opts)
       Logger.info("Payment request: #{inspect(req_opts)}")
-      TasRinhaback3ed.HTTP.request(req_opts)
+      response = TasRinhaback3ed.HTTP.request(req_opts)
+
+      end_time = System.monotonic_time(:millisecond)
+      elapsed_time = end_time - start_time
+      Logger.info(";#{inspect(Map.get(params, "correlationId"))}; Payment Gateway make_request processed in; #{elapsed_time}")
+
+      response
     rescue
       e ->
         #Logger.error("Unexpected exception during request: #{inspect(e)}")

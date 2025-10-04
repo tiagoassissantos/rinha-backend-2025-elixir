@@ -4,6 +4,7 @@ defmodule TasRinhaback3ed.Application do
   @moduledoc false
 
   use Application
+  require Logger
 
   @impl true
   def start(_type, _args) do
@@ -28,6 +29,9 @@ defmodule TasRinhaback3ed.Application do
           []
       end
 
+    Logger.warning("role: #{inspect(role)}")
+    Logger.warning("queue_children: #{inspect(queue_children)}")
+
     repo_children = [TasRinhaback3ed.Repo]
 
     http_children =
@@ -50,7 +54,8 @@ defmodule TasRinhaback3ed.Application do
               Bandit,
               plug: TasRinhaback3ed.Router,
               scheme: :http,
-              port: port
+              port: port,
+              thousand_island_options: [num_acceptors: 1]
             }
           ]
       end

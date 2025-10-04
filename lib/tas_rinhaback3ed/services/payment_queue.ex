@@ -36,6 +36,8 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
     ensure_queue_table!()
     ensure_counters!()
 
+    Logger.warning("max_queue_size: #{inspect(max_queue_size)}")
+
     :persistent_term.put(@max_queue_size_key, max_queue_size)
 
     {:ok, %{max_queue_size: max_queue_size}}
@@ -141,6 +143,7 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   end
 
   defp enqueue_local(payload) do
+    Logger.debug(";#{inspect(Map.get(payload, "correlationId"))}; Payment queue local enqueue called")
     case max_queue_size() do
       :infinity ->
         do_enqueue(payload)
@@ -165,6 +168,8 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
     :ets.insert(@table_name, {key, entry})
     :atomics.add(queue_counter(), 1, 1)
 
+    Logger.debug(";#{inspect(Map.get(payload, "correlationId"))}; Do enqueue called")
+
     :ok
   end
 
@@ -183,11 +188,12 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   end
 
   defp remote_enqueue(node, payload) do
+    Logger.debug("Payment queue remote enqueue called for #{inspect(node)}")
     _ = Node.connect(node)
 
     case :rpc.call(node, __MODULE__, :enqueue, [payload]) do
       {:badrpc, reason} ->
-        Logger.warning("Payment queue remote enqueue failed for #{inspect(node)}: #{inspect(reason)}")
+        Logger.error("Payment queue remote enqueue failed for #{inspect(node)}: #{inspect(reason)}")
         {:error, :queue_unavailable}
 
       other ->
@@ -233,7 +239,7 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
     end
 
     :ets.new(@table_name, [
-      :ordered_set,
+      :set,
       :public,
       :named_table,
       {:read_concurrency, true},

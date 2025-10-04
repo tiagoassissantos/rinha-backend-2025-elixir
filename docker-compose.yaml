@@ -14,11 +14,13 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
+      - DB_POOL_SIZE=3
+      - DB_POOL_COUNT=1
       - PAYMENT_QUEUE_NODE=worker1@worker1
       - RELEASE_DISTRIBUTION=sname
       - RELEASE_NODE=app1
       - RELEASE_COOKIE=rinha-cluster
-      - ERL_AFLAGS=+S 2:2
+      - ERL_AFLAGS=+S 1
       - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
       - ERL_FULLSWEEP_AFTER=10
       - LOG_LEVEL=warning
@@ -38,7 +40,7 @@ services:
       resources:
         limits:
           cpus: "0.2"
-          memory: "80MB"
+          memory: "75MB"
 
   app2:
     build:
@@ -55,6 +57,8 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
+      - DB_POOL_SIZE=3
+      - DB_POOL_COUNT=1
       - PAYMENT_QUEUE_NODE=worker1@worker1
       - RELEASE_DISTRIBUTION=sname
       - RELEASE_NODE=app2
@@ -79,7 +83,7 @@ services:
       resources:
         limits:
           cpus: "0.2"
-          memory: "80MB"
+          memory: "75MB"
 
   worker1:
     build:
@@ -98,6 +102,8 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
+      - DB_POOL_SIZE=5
+      - DB_POOL_COUNT=1
       - ERL_AFLAGS=+S 2:2
       - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
       - ERL_FULLSWEEP_AFTER=10
@@ -111,7 +117,7 @@ services:
       resources:
         limits:
           cpus: "0.7"
-          memory: "114MB"
+          memory: "130MB"
 
   nginx:
     image: nginx:alpine
@@ -131,7 +137,7 @@ services:
       resources:
         limits:
           cpus: "0.1"
-          memory: "26MB"
+          memory: "25MB"
 
   postgres:
     image: postgres:17-alpine
@@ -155,7 +161,7 @@ services:
       resources:
         limits:
           cpus: "0.3"
-          memory: "50MB"
+          memory: "45MB"
 
 networks:
   payment-processor:

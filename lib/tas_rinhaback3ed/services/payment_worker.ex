@@ -44,7 +44,7 @@ defmodule TasRinhaback3ed.Services.PaymentWorker do
     if MapSet.member?(state.worker_tasks, ref) do
       worker_tasks = MapSet.delete(state.worker_tasks, ref)
       PaymentQueue.worker_finished()
-      Logger.warning("Payment worker crashed: #{inspect(reason)}")
+      Logger.error("Payment worker crashed: #{inspect(reason)}")
 
       new_state =
         state
@@ -102,6 +102,8 @@ defmodule TasRinhaback3ed.Services.PaymentWorker do
   end
 
   defp process_payload(payload, wait_ms) do
+    start_time = System.monotonic_time(:millisecond)
+
     result =
       try do
         PaymentGateway.send_payment(payload)
@@ -115,20 +117,24 @@ defmodule TasRinhaback3ed.Services.PaymentWorker do
           {:error, reason}
       end
 
+    end_time = System.monotonic_time(:millisecond)
+    elapsed_time = end_time - start_time
+    Logger.debug(";#{inspect(Map.get(payload, "correlationId"))}; Payment processed in; #{elapsed_time}")
+
     case result do
       :ok ->
         :ok
 
       {:error, {:fallback_failed, details}} ->
-        Logger.warning(
-          "Fallback gateway failed after #{wait_ms}ms: #{inspect(details)}. Re-enqueueing payload."
+        Logger.error(
+          "  ;#{inspect(Map.get(payload, "correlationId"))}; Fallback gateway failed after; #{wait_ms}; #{inspect(details)}. Re-enqueueing payload."
         )
 
         requeue_payload(payload)
         Process.sleep(@sleep_ms)
 
       {:error, reason} ->
-        Logger.warning("Payment processed with error after #{wait_ms}ms: #{inspect(reason)}")
+        Logger.error("  ;#{inspect(Map.get(payload, "correlationId"))}; Payment processed with error after; #{wait_ms}; #{inspect(reason)}")
 
       other ->
         Logger.debug("Payment gateway returned unexpected value: #{inspect(other)}")
@@ -138,11 +144,11 @@ defmodule TasRinhaback3ed.Services.PaymentWorker do
   defp log_result(:ok), do: :ok
 
   defp log_result({:error, reason}) do
-    Logger.warning("Payment worker error: #{inspect(reason)}")
+    Logger.error("Payment worker error: #{inspect(reason)}")
   end
 
   defp log_result(other) do
-    Logger.debug("Payment worker result: #{inspect(other)}")
+    Logger.warning("Payment worker result: #{inspect(other)}")
   end
 
   defp resolve_max_concurrency(opts) do
@@ -152,12 +158,17 @@ defmodule TasRinhaback3ed.Services.PaymentWorker do
   end
 
   defp requeue_payload(payload) do
+    Logger.debug(";#{inspect(Map.get(payload, "correlationId"))}; Queue stats before: #{inspect(PaymentQueue.stats())}")
     case PaymentQueue.enqueue(payload) do
       :ok ->
+        Logger.debug(";#{inspect(Map.get(payload, "correlationId"))}; Queue stats after : #{inspect(PaymentQueue.stats())}")
         :ok
 
       {:error, :queue_full} ->
-        Logger.error("Unable to re-enqueue payload: payment queue is full")
+        Logger.error("  ;#{inspect(Map.get(payload, "correlationId"))}; Unable to re-enqueue payload: payment queue is full")
+
+      _ ->
+        Logger.error("  ;#{inspect(Map.get(payload, "correlationId"))}; Unable to re-enqueue payload: unknown error")
     end
   end
 end

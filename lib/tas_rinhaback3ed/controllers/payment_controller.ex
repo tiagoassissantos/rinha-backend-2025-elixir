@@ -16,8 +16,13 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
 
   def payments(conn, params) do
     # Enqueue with back-pressure handling
+    start_time = System.monotonic_time(:millisecond)
+
     case PaymentQueue.enqueue(params) do
       :ok ->
+        end_time = System.monotonic_time(:millisecond)
+        elapsed_time = end_time - start_time
+        Logger.info("Request processed in #{elapsed_time}ms")
         conn
         |> Plug.Conn.put_resp_content_type("application/json")
         |> Plug.Conn.send_resp(204, @empty_response_204)

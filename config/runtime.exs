@@ -27,17 +27,30 @@ if config_env() in [:dev, :prod] do
       ]
     end
 
-  pool_size =
+  db_pool_size =
     case System.get_env("DB_POOL_SIZE") do
       nil -> System.schedulers_online() * 5
       v -> String.to_integer(v)
     end
 
+  db_pool_count =
+    case System.get_env("DB_POOL_COUNT") do
+      nil -> 1
+      v -> String.to_integer(v)
+    end
+
+  IO.puts("db_pool_size: #{inspect(db_pool_size)}")
+  IO.puts("db_pool_count: #{inspect(db_pool_count)}")
+
   ssl = System.get_env("DB_SSL", "false") in ["1", "true", "TRUE", "yes", "on"]
 
   config :tas_rinhaback_3ed,
          TasRinhaback3ed.Repo,
-         Keyword.merge(repo_config, pool_size: pool_size, ssl: ssl, log: false)
+         Keyword.merge(repo_config,
+              pool_size: db_pool_size,
+              cache_size: 100,
+              ssl: ssl,
+              log: false)
 end
 
 # HTTP client (Finch) pool configuration
@@ -50,9 +63,12 @@ if config_env() in [:dev, :prod] do
 
   pool_count =
     case System.get_env("HTTP_POOL_COUNT") do
-      nil -> 1
+      nil -> 10
       v -> String.to_integer(v)
     end
+
+  IO.puts("http_pool_size: #{inspect(pool_size)}")
+  IO.puts("http_pool_count: #{inspect(pool_count)}")
 
   config :tas_rinhaback_3ed, :http_client, pool_size: pool_size, pool_count: pool_count
 end
