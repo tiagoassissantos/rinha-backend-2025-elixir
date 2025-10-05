@@ -56,14 +56,14 @@ end
 # HTTP client (Finch) pool configuration
 if config_env() in [:dev, :prod] do
   pool_size =
-    case System.get_env("HTTP_POOL_SIZE") do
+    case System.get_env("FINCH_POOL_SIZE") do
       nil -> 300
       v -> String.to_integer(v)
     end
 
   pool_count =
-    case System.get_env("HTTP_POOL_COUNT") do
-      nil -> 10
+    case System.get_env("FINCH_POOL_COUNT") do
+      nil -> 5
       v -> String.to_integer(v)
     end
 

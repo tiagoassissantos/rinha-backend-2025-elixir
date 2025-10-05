@@ -14,16 +14,22 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
-      - DB_POOL_SIZE=3
+      - DB_POOL_SIZE=1
       - DB_POOL_COUNT=1
       - PAYMENT_QUEUE_NODE=worker1@worker1
       - RELEASE_DISTRIBUTION=sname
       - RELEASE_NODE=app1
       - RELEASE_COOKIE=rinha-cluster
-      - ERL_AFLAGS=+S 1
+      - ERL_AFLAGS=+S 1:1
       - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
       - ERL_FULLSWEEP_AFTER=10
       - LOG_LEVEL=warning
+      - API_BANDIT_ACCEPTORS=1
+      - API_BANDIT_MAX_CONN=200
+      - API_CONN_KEEPALIVE_MS=3000
+      - QUEUE_SOFT_LIMIT=9000
+      - QUEUE_HARD_LIMIT=10000
+      - ENQUEUE_TIMEOUT_MS=60
     ports:
       - "4001:4001"
     expose:
@@ -57,16 +63,22 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
-      - DB_POOL_SIZE=3
+      - DB_POOL_SIZE=1
       - DB_POOL_COUNT=1
       - PAYMENT_QUEUE_NODE=worker1@worker1
       - RELEASE_DISTRIBUTION=sname
       - RELEASE_NODE=app2
       - RELEASE_COOKIE=rinha-cluster
-      - ERL_AFLAGS=+S 2:2
+      - ERL_AFLAGS=+S 1:1
       - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
       - ERL_FULLSWEEP_AFTER=10
       - LOG_LEVEL=warning
+      - API_BANDIT_ACCEPTORS=1
+      - API_BANDIT_MAX_CONN=200
+      - API_CONN_KEEPALIVE_MS=3000
+      - QUEUE_SOFT_LIMIT=9000
+      - QUEUE_HARD_LIMIT=10000
+      - ENQUEUE_TIMEOUT_MS=60
     ports:
       - "4002:4002"
     expose:
@@ -102,12 +114,25 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
-      - DB_POOL_SIZE=5
+      - DB_POOL_SIZE=6
       - DB_POOL_COUNT=1
+      #- DB_QUEUE_TARGET_MS=2000
+      #- DB_QUEUE_INTERVAL_MS=4000
+      #- PAYMENT_QUEUE_MAX_SIZE=10000
+      #- PAYMENT_QUEUE_SOFT_SIZE=9000
       - ERL_AFLAGS=+S 2:2
       - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
       - ERL_FULLSWEEP_AFTER=10
       - LOG_LEVEL=warning
+      - WORKER_CONCURRENCY=12
+      - PRIMARY_URL=http://payment-processor-default:8001/payments
+      - FALLBACK_URL=http://payment-processor-fallback:8002/payments
+      #- PRIMARY_CONNECT_MS=200
+      #- PRIMARY_RECV_MS=600
+      #- FALLBACK_CONNECT_MS=200
+      #- FALLBACK_RECV_MS=500
+      #- FINCH_POOL_SIZE=8
+      #- FINCH_POOL_COUNT=1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

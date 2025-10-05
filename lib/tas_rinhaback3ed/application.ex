@@ -34,6 +34,10 @@ defmodule TasRinhaback3ed.Application do
 
     repo_children = [TasRinhaback3ed.Repo]
 
+    acceptors = String.to_integer(System.get_env("API_BANDIT_ACCEPTORS", "1"))
+    max_conn  = String.to_integer(System.get_env("API_BANDIT_MAX_CONN", "200"))
+    keep_ms   = String.to_integer(System.get_env("API_CONN_KEEPALIVE_MS", "3000"))
+
     http_children =
       cond do
         role == :worker ->
@@ -56,6 +60,8 @@ defmodule TasRinhaback3ed.Application do
               scheme: :http,
               port: port,
               thousand_island_options: [num_acceptors: 1]
+              #thousand_island_options: [num_acceptors: acceptors, num_connections: max_conn, read_timeout: keep_ms],
+              #http_1_options: [max_header_length: 16_384, max_request_line_length: 8_192]
             }
           ]
       end
@@ -81,6 +87,9 @@ defmodule TasRinhaback3ed.Application do
     cfg = Application.get_env(:tas_rinhaback_3ed, :http_client, [])
     size = Keyword.get(cfg, :pool_size, 10)
     count = Keyword.get(cfg, :pool_count, 1)
+
+    Logger.warning("finch_client_pool_size: #{inspect(size)}")
+    Logger.warning("finch_client_pool_count: #{inspect(count)}")
 
     conn_opts =
       Keyword.get(cfg, :conn_opts, transport_opts: [verify: :verify_peer], timeout: 1_000)

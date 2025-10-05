@@ -10,7 +10,9 @@ defmodule TasRinhaback3ed.Controllers.HealthController do
       status: "ok",
       queue: queue_stats,
       memory: inspect(:erlang.memory()),
-      system_info: inspect(:erlang.system_info(:wordsize))
+      wordsize: inspect(:erlang.system_info(:wordsize)),
+      schedulers: inspect(:erlang.system_info(:schedulers)),
+      schedulers_online: inspect(:erlang.system_info(:schedulers_online)),
     }
 
     JSON.send_json(conn, 200, response)
