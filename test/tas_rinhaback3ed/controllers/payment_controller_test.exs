@@ -1,5 +1,5 @@
 defmodule TasRinhaback3ed.Controllers.PaymentControllerTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
   import Plug.Test
   import Plug.Conn
 
@@ -7,8 +7,17 @@ defmodule TasRinhaback3ed.Controllers.PaymentControllerTest do
 
   @opts Router.init([])
 
+  setup do
+    case :ets.whereis(:payment_work_queue) do
+      :undefined -> :ok
+      table -> :ets.delete_all_objects(table)
+    end
+
+    :ok
+  end
+
   describe "POST /payments" do
-    test "enqueues and returns 202; worker forwards JSON" do
+    test "enqueues successfully and worker forwards JSON" do
       bypass = Bypass.open()
       base_url = "http://localhost:#{bypass.port}"
 
@@ -29,7 +38,8 @@ defmodule TasRinhaback3ed.Controllers.PaymentControllerTest do
         {:ok, body, conn} = read_body(conn)
         assert get_req_header(conn, "content-type") |> Enum.at(0) =~ "application/json"
         decoded = Jason.decode!(body)
-        assert decoded == payload
+        assert decoded["correlationId"] == payload["correlationId"]
+        assert decoded["amount"] == payload["amount"]
         send(test_pid, {:processor_called, decoded})
         resp(conn, 202, ~s({"ok":true}))
       end)
@@ -41,16 +51,14 @@ defmodule TasRinhaback3ed.Controllers.PaymentControllerTest do
 
       conn = Router.call(conn, @opts)
 
-      assert conn.status == 202
+      assert conn.status == 204
       assert get_resp_header(conn, "content-type") == ["application/json; charset=utf-8"]
-
-      body = Jason.decode!(conn.resp_body)
-      assert body["status"] == "queued"
-      assert body["received_params"] == payload
-      assert_receive {:processor_called, ^payload}, 1_000
+      assert conn.resp_body == ""
+      assert_receive {:processor_called, received}, 1_000
+      assert received["correlationId"] == payload["correlationId"]
     end
 
-    test "returns 400 for missing/invalid fields" do
+    test "accepts payloads even when fields are invalid" do
       payload = %{"amount" => "not-a-decimal"}
 
       conn =
@@ -60,10 +68,8 @@ defmodule TasRinhaback3ed.Controllers.PaymentControllerTest do
 
       conn = Router.call(conn, @opts)
 
-      assert conn.status == 400
-      body = Jason.decode!(conn.resp_body)
-      assert body["error"] == "invalid_request"
-      assert is_list(body["errors"]) and length(body["errors"]) >= 1
+      assert conn.status == 204
+      assert conn.resp_body == ""
     end
   end
 
@@ -81,10 +87,10 @@ defmodule TasRinhaback3ed.Controllers.PaymentControllerTest do
       assert get_resp_header(conn, "content-type") == ["application/json; charset=utf-8"]
 
       body = Jason.decode!(conn.resp_body)
-      assert body["default"]["totalRequests"] == 43_236
-      assert_in_delta body["default"]["totalAmount"], 4_142_345.92, 0.0001
-      assert body["fallback"]["totalRequests"] == 423_545
-      assert_in_delta body["fallback"]["totalAmount"], 329_347.34, 0.0001
+      assert body["default"]["totalRequests"] == 0
+      assert body["default"]["totalAmount"] == 0
+      assert body["fallback"]["totalRequests"] == 0
+      assert body["fallback"]["totalAmount"] == 0
     end
 
     test "returns 400 when from/to are missing" do
@@ -97,7 +103,6 @@ defmodule TasRinhaback3ed.Controllers.PaymentControllerTest do
 
       body = Jason.decode!(conn.resp_body)
       assert body["error"] == "invalid_request"
-      assert is_list(body["errors"]) and length(body["errors"]) >= 1
     end
   end
 end

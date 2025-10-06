@@ -37,7 +37,7 @@ RUN mix release
 # This stage creates the final, small image to run the application.
 FROM alpine:latest AS runner
 
-RUN apk add --no-cache openssl ncurses-libs libstdc++ libgcc htop \
+RUN apk add --no-cache openssl ncurses-libs libstdc++ libgcc htop curl \
   && addgroup -S app \
   && adduser -S -G app app
 

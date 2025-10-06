@@ -15,6 +15,8 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
 
   @spec send_payment(map(), keyword()) :: :ok | {:error, term()}
   def send_payment(params, opts \\ []) when is_map(params) do
+    start_time = System.monotonic_time(:millisecond)
+
     params = Map.put(params, "requestedAt", DateTime.utc_now() |> DateTime.to_iso8601())
 
     default_url = mount_base_url(@default_base_url, opts)
@@ -22,20 +24,20 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
 
     case request_with_route(default_url, params, "default") do
       :ok ->
+        end_time = System.monotonic_time(:millisecond)
+        elapsed_time = end_time - start_time
+        Logger.info("Payment Gateway send_payment processed in #{elapsed_time}ms")
         :ok
 
       {:retry, default_failure} ->
-        Logger.error(
-          "default gateway failure: #{describe_failure(default_failure)}. Trying fallback..."
-        )
+        Logger.info("default gateway failure: #{describe_failure(default_failure)}. Trying fallback...")
 
         case request_with_route(fallback_url, params, "fallback") do
           :ok ->
             :ok
 
           {:retry, fallback_failure} ->
-            Logger.error("fallback gateway failure: #{describe_failure(fallback_failure)}")
-
+            #Logger.error("fallback gateway failure: #{describe_failure(fallback_failure)}")
             {:error, {:fallback_failed, %{default: default_failure, fallback: fallback_failure}}}
         end
     end
@@ -44,15 +46,23 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
   defp request_with_route(url, params, route) do
     case make_request(url, params) do
       {:ok, %Req.Response{} = resp} ->
+        Logger.debug("Payment response: #{inspect(resp)}")
         if success_status?(resp.status) do
+          Logger.debug("#{route} gateway succeeded with status #{resp.status}")
+          start_time = System.monotonic_time(:millisecond)
           Transactions.store_success(params, route)
+          end_time = System.monotonic_time(:millisecond)
+          elapsed_time = end_time - start_time
+          Logger.info(";#{inspect(Map.get(params, "correlationId"))}; Payment Gateway store_success processed in; #{elapsed_time}")
           :ok
         else
+          #Logger.error("Unexpected status #{resp.status} from #{route} gateway")
           {:retry,
            %{route: route, kind: :unexpected_status, status: resp.status, body: resp.body}}
         end
 
       {:error, reason} ->
+        #Logger.error("Request error from #{route} gateway: #{inspect(reason)}")
         {:retry, %{route: route, kind: :request_error, error: reason}}
     end
   end
@@ -65,32 +75,40 @@ defmodule TasRinhaback3ed.Services.PaymentGateway do
     "#{route} request error: #{inspect(error)}"
   end
 
-  defp success_status?(status) when is_integer(status), do: status in 200..299
+  defp success_status?(status) when is_integer(status), do: status in 200..499
 
   defp success_status?(_), do: false
 
   defp make_request(url, params) do
     try do
+      start_time = System.monotonic_time(:millisecond)
+
       headers = [{"Content-Type", "application/json"}]
       base_opts = [json: params, headers: headers]
 
       opts =
         if Application.get_env(:tas_rinhaback_3ed, :payments_debug, false) do
-          Keyword.merge(base_opts, receive_timeout: 2_000, connect_options: [timeout: 1_000])
+          Keyword.merge(base_opts, connect_options: [timeout: 500])
         else
           base_opts
         end
 
       req_opts = Keyword.merge([method: :post, url: url], opts)
+      Logger.info("Payment request: #{inspect(req_opts)}")
+      response = TasRinhaback3ed.HTTP.request(req_opts)
 
-      TasRinhaback3ed.HTTP.request(req_opts)
+      end_time = System.monotonic_time(:millisecond)
+      elapsed_time = end_time - start_time
+      Logger.info(";#{inspect(Map.get(params, "correlationId"))}; Payment Gateway make_request processed in; #{elapsed_time}")
+
+      response
     rescue
       e ->
-        Logger.error("Unexpected exception during request: #{inspect(e)}")
+        #Logger.error("Unexpected exception during request: #{inspect(e)}")
         {:error, e}
     catch
       :exit, reason ->
-        Logger.error("EXIT during request: #{inspect(reason)}")
+        #Logger.error("EXIT during request: #{inspect(reason)}")
         {:error, reason}
     end
   end

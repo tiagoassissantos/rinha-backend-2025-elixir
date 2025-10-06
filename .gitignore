@@ -22,3 +22,6 @@ tas_rinhaback_3ed-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+.idea
+tas_rinhaback_3ed.iml

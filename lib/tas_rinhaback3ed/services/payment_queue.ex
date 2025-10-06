@@ -9,9 +9,10 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
   """
 
   use GenServer
+  require Logger
 
   @type payload :: map()
-  @type enqueue_result :: :ok | {:error, :queue_full}
+  @type enqueue_result :: :ok | {:error, :queue_full} | {:error, :queue_unavailable}
   @type dequeue_result :: {:ok, payload(), non_neg_integer()} | :empty
 
   @table_name :payment_work_queue
@@ -140,6 +141,8 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
     :ets.insert(@table_name, {key, entry})
     :atomics.add(queue_counter(), 1, 1)
 
+    Logger.debug(";#{inspect(Map.get(payload, "correlationId"))}; Do enqueue called")
+
     :ok
   end
 
@@ -153,7 +156,7 @@ defmodule TasRinhaback3ed.Services.PaymentQueue do
     end
 
     :ets.new(@table_name, [
-      :ordered_set,
+      :set,
       :public,
       :named_table,
       {:read_concurrency, true},

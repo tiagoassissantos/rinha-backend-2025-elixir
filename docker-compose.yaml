@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     platform: ${APP_PLATFORM:-linux/amd64}
     container_name: app1
+    hostname: app1
     environment:
       - PORT=4001
       - DB_HOST=postgres
@@ -12,6 +13,8 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
+      - DB_POOL_SIZE=10
+      - DB_POOL_COUNT=2
       - ERL_AFLAGS=+S 2:2
       - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
       - ERL_FULLSWEEP_AFTER=10
@@ -47,6 +50,8 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=tasrinha_dev
+      - DB_POOL_SIZE=10
+      - DB_POOL_COUNT=2
       - ERL_AFLAGS=+S 2:2
       - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
       - ERL_FULLSWEEP_AFTER=10

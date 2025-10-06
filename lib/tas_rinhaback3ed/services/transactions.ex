@@ -37,7 +37,7 @@ defmodule TasRinhaback3ed.Services.Transactions do
           :ok
 
         {:error, changeset} ->
-          Logger.warning("Failed to insert transaction: #{inspect(changeset.errors)}")
+          Logger.error("Failed to insert transaction: #{inspect(changeset.errors)}")
           :ok
       end
     else
@@ -45,7 +45,7 @@ defmodule TasRinhaback3ed.Services.Transactions do
     end
   rescue
     e ->
-      Logger.warning("Error persisting transaction: #{Exception.message(e)}")
+      Logger.error("Error persisting transaction: #{Exception.message(e)}")
       :ok
   end
 
@@ -140,7 +140,7 @@ defmodule TasRinhaback3ed.Services.Transactions do
     end
   rescue
     e ->
-      Logger.warning("Error updating transaction: #{Exception.message(e)}")
+      Logger.error("Error updating transaction: #{Exception.message(e)}")
       {:error, e}
   end
 
