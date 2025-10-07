@@ -19,6 +19,7 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
   - Payments: `lib/tas_rinhaback3ed/controllers/payment_controller.ex`
 - Services:
   - Payment gateway: `lib/tas_rinhaback3ed/services/payment_gateway.ex`
+  - Payment gateway health monitor: `lib/tas_rinhaback3ed/services/payment_gateway_health.ex`
   - Payment queue: `lib/tas_rinhaback3ed/services/payment_queue.ex`
   - Payment worker: `lib/tas_rinhaback3ed/services/payment_worker.ex`
   - Transactions (DB): `lib/tas_rinhaback3ed/services/transactions.ex`
@@ -39,7 +40,8 @@ This project is an Elixir Plug + Bandit HTTP API for the Rinha Backend 2025 chal
 - Fallback base URL: `http://localhost:8002`
 - Effective URL is `<base>/payments` (service appends `/payments`).
 - Config override: `Application.get_env(:tas_rinhaback_3ed, :payments_base_url, ...)` or pass `base_url:` option to `PaymentGateway.send_payment/2` in tests.
-- Fallback behavior: only on pool pressure timeouts (`:pool_timeout`). Other errors bubble up.
+- Health monitor: `PaymentGatewayHealth` polls `/payments/service-health` every 5s and routes traffic when `failing: false` and `minResponseTime < 100`. Default attempts fallback when its health is good; otherwise the payload is re-enqueued without hitting the processors.
+- Fallback behavior: the worker retries with the fallback route whenever the default request fails and the fallback health check passes; if both routes fail the payload is re-enqueued.
 
 ## High-Performance ETS Queue (PaymentQueue) 🚀
 - Module: `lib/tas_rinhaback3ed/services/payment_queue.ex`

@@ -7,14 +7,28 @@ defmodule TasRinhaback3ed.HTTP do
   - Use `request/1` passing standard Req options (e.g. `method`, `url`, `json`)
   """
 
+  @default_request_opts [receive_timeout: 7_000, pool_timeout: 7_000]
+
   defp base_client do
     rid = Logger.metadata()[:request_id]
 
     Req.new(finch: TasRinhaback3ed.Finch)
-    |> Req.merge(headers: if(rid, do: [{"x-request-id", rid}], else: []))
+    |> Req.merge(@default_request_opts)
+    |> maybe_put_request_id(rid)
   end
 
   @spec request(Req.Request.t() | keyword()) :: {:ok, Req.Response.t()} | {:error, term()}
-  def request(%Req.Request{} = req), do: Req.request(req)
+  def request(%Req.Request{} = req) do
+    req
+    |> Req.merge(@default_request_opts)
+    |> maybe_put_request_id(Logger.metadata()[:request_id])
+    |> Req.request()
+  end
+
   def request(opts) when is_list(opts), do: base_client() |> Req.request(opts)
+
+  defp maybe_put_request_id(req, nil), do: req
+
+  defp maybe_put_request_id(req, rid),
+    do: Req.merge(req, headers: [{"x-request-id", rid}])
 end

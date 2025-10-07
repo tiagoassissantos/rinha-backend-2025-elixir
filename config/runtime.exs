@@ -37,7 +37,11 @@ if config_env() in [:dev, :prod] do
 
   config :tas_rinhaback_3ed,
          TasRinhaback3ed.Repo,
-         Keyword.merge(repo_config, pool_size: pool_size, ssl: ssl, log: false)
+         Keyword.merge(repo_config,
+              pool_size: pool_size,
+              cache_size: 100,
+              ssl: ssl,
+              log: false)
 end
 
 # HTTP client (Finch) pool configuration
@@ -60,6 +64,9 @@ end
 if config_env() in [:dev, :prod] do
   queue_env_value = System.get_env("PAYMENT_QUEUE_MAX_SIZE")
 
+  queue_config = Application.get_env(:tas_rinhaback_3ed, :payment_queue, [])
+  IO.puts("queue_config: #{inspect(queue_config)}")
+
   if queue_env_value && queue_env_value != "" do
     normalized = String.downcase(queue_env_value)
 
@@ -78,8 +85,6 @@ if config_env() in [:dev, :prod] do
                     "PAYMENT_QUEUE_MAX_SIZE must be a positive integer or \"infinity\""
           end
       end
-
-    queue_config = Application.get_env(:tas_rinhaback_3ed, :payment_queue, [])
 
     config :tas_rinhaback_3ed,
            :payment_queue,

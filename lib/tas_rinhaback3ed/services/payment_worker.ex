@@ -10,7 +10,7 @@ defmodule TasRinhaback3ed.Services.PaymentWorker do
   alias TasRinhaback3ed.Services.PaymentGateway
   alias TasRinhaback3ed.Services.PaymentQueue
 
-  @sleep_ms 100
+  @sleep_ms 300
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -119,7 +119,10 @@ defmodule TasRinhaback3ed.Services.PaymentWorker do
 
     end_time = System.monotonic_time(:millisecond)
     elapsed_time = end_time - start_time
-    Logger.debug(";#{inspect(Map.get(payload, "correlationId"))}; Payment processed in; #{elapsed_time}")
+
+    Logger.debug(
+      ";#{inspect(Map.get(payload, "correlationId"))}; Payment processed in; #{elapsed_time}"
+    )
 
     case result do
       :ok ->
@@ -133,8 +136,18 @@ defmodule TasRinhaback3ed.Services.PaymentWorker do
         requeue_payload(payload)
         Process.sleep(@sleep_ms)
 
+      {:error, :gateways_unavailable} ->
+        Logger.error(
+          "  ;#{inspect(Map.get(payload, "correlationId"))}; No healthy payment processor routes available after; #{wait_ms}. Re-enqueueing payload."
+        )
+
+        requeue_payload(payload)
+        Process.sleep(@sleep_ms)
+
       {:error, reason} ->
-        Logger.error("  ;#{inspect(Map.get(payload, "correlationId"))}; Payment processed with error after; #{wait_ms}; #{inspect(reason)}")
+        Logger.error(
+          "  ;#{inspect(Map.get(payload, "correlationId"))}; Payment processed with error after; #{wait_ms}; #{inspect(reason)}"
+        )
 
       other ->
         Logger.debug("Payment gateway returned unexpected value: #{inspect(other)}")
@@ -158,17 +171,27 @@ defmodule TasRinhaback3ed.Services.PaymentWorker do
   end
 
   defp requeue_payload(payload) do
-    Logger.debug(";#{inspect(Map.get(payload, "correlationId"))}; Queue stats before: #{inspect(PaymentQueue.stats())}")
+    Logger.debug(
+      ";#{inspect(Map.get(payload, "correlationId"))}; Queue stats before: #{inspect(PaymentQueue.stats())}"
+    )
+
     case PaymentQueue.enqueue(payload) do
       :ok ->
-        Logger.debug(";#{inspect(Map.get(payload, "correlationId"))}; Queue stats after : #{inspect(PaymentQueue.stats())}")
+        Logger.debug(
+          ";#{inspect(Map.get(payload, "correlationId"))}; Queue stats after : #{inspect(PaymentQueue.stats())}"
+        )
+
         :ok
 
       {:error, :queue_full} ->
-        Logger.error("  ;#{inspect(Map.get(payload, "correlationId"))}; Unable to re-enqueue payload: payment queue is full")
+        Logger.error(
+          "  ;#{inspect(Map.get(payload, "correlationId"))}; Unable to re-enqueue payload: payment queue is full"
+        )
 
       _ ->
-        Logger.error("  ;#{inspect(Map.get(payload, "correlationId"))}; Unable to re-enqueue payload: unknown error")
+        Logger.error(
+          "  ;#{inspect(Map.get(payload, "correlationId"))}; Unable to re-enqueue payload: unknown error"
+        )
     end
   end
 end

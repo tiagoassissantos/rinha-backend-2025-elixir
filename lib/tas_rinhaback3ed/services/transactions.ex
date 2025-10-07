@@ -21,13 +21,13 @@ defmodule TasRinhaback3ed.Services.Transactions do
   Persist a successful transaction. Route is "default" or "fallback".
   """
   @spec store_success(map(), String.t()) :: :ok
-  def store_success(params, route) when route in ["default", "fallback"] do
+  def store_success(params, route) when route in [:default, :fallback] do
     if repo_available?() do
       attrs = %{
         correlation_id: Map.get(params, "correlationId"),
         amount: cast_decimal(Map.get(params, "amount")),
         inserted_at: Map.get(params, "requestedAt"),
-        route: route
+        route: Atom.to_string(route)
       }
 
       changeset = Transaction.changeset(%Transaction{}, attrs)

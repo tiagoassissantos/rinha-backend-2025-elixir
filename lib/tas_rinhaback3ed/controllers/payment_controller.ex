@@ -21,7 +21,7 @@ defmodule TasRinhaback3ed.Controllers.PaymentController do
       :ok ->
         end_time = System.monotonic_time(:millisecond)
         elapsed_time = end_time - start_time
-        Logger.info("Request processed in #{elapsed_time}ms")
+        Logger.info(";#{inspect(Map.get(params, "correlationId"))}; Request processed in #{elapsed_time}")
         conn
         |> Plug.Conn.put_resp_content_type("application/json")
         |> Plug.Conn.send_resp(204, @empty_response_204)

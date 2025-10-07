@@ -18,7 +18,7 @@ services:
       - ERL_AFLAGS=+S 2:2
       - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
       - ERL_FULLSWEEP_AFTER=10
-      - LOG_LEVEL=warning
+      - LOG_LEVEL=info
     ports:
       - "4001:4001"
     expose:
@@ -35,7 +35,7 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: "132MB"
+          memory: "122MB"
 
   app2:
     build:
@@ -55,7 +55,7 @@ services:
       - ERL_AFLAGS=+S 2:2
       - ERL_FLAGS=+sbwt none +sbwtdcpu none +sbwtdio none
       - ERL_FULLSWEEP_AFTER=10
-      - LOG_LEVEL=warning
+      - LOG_LEVEL=info
     ports:
       - "4002:4002"
     expose:
@@ -72,7 +72,7 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: "132MB"
+          memory: "122MB"
 
   nginx:
     image: nginx:alpine
@@ -115,7 +115,7 @@ services:
       resources:
         limits:
           cpus: "2.4"
-          memory: "60MB"
+          memory: "80MB"
 
 networks:
   payment-processor:

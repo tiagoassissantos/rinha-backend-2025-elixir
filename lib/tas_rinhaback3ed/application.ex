@@ -11,11 +11,23 @@ defmodule TasRinhaback3ed.Application do
       {Finch, name: TasRinhaback3ed.Finch, pools: finch_pools()}
     ]
 
-    queue_children = [
-      {Task.Supervisor, name: TasRinhaback3ed.PaymentTaskSup},
-      TasRinhaback3ed.Services.PaymentQueue,
-      TasRinhaback3ed.Services.PaymentWorker
-    ]
+    queue_children =
+      case current_env() do
+        :test ->
+          [
+            {Task.Supervisor, name: TasRinhaback3ed.PaymentTaskSup},
+            TasRinhaback3ed.Services.PaymentQueue,
+            TasRinhaback3ed.Services.PaymentWorker
+          ]
+
+        _ ->
+          [
+            {Task.Supervisor, name: TasRinhaback3ed.PaymentTaskSup},
+            TasRinhaback3ed.Services.PaymentGatewayHealth,
+            TasRinhaback3ed.Services.PaymentQueue,
+            TasRinhaback3ed.Services.PaymentWorker
+          ]
+      end
 
     repo_children =
       if current_env() == :test do
@@ -39,7 +51,8 @@ defmodule TasRinhaback3ed.Application do
             Bandit,
             plug: TasRinhaback3ed.Router,
             scheme: :http,
-            port: port
+            port: port,
+            thousand_island_options: [num_acceptors: 1]
           }
         ]
       end
