@@ -48,9 +48,9 @@ defmodule TasRinhaback3ed.Services.PaymentGatewayTest do
     assert_receive :gateway_called, 1_000
     assert_receive :gateway_called, 1_000
 
-    assert default_failure[:route] == "default"
+    assert default_failure[:route] == :default
     assert default_failure[:kind] in [:request_error, :unexpected_status]
-    assert fallback_failure[:route] == "fallback"
+    assert fallback_failure[:route] == :fallback
     assert fallback_failure[:kind] in [:request_error, :unexpected_status]
   end
 
